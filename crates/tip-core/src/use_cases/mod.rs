@@ -212,8 +212,7 @@ mod tests {
             &store,
             &EventFilter {
                 subject: Some(keypair.public_key()),
-                issuer: None,
-                kind: None,
+                ..EventFilter::default()
             },
         )
         .unwrap();

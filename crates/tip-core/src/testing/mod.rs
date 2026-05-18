@@ -47,6 +47,7 @@ impl EventStore for InMemoryEventStore {
                         .kind
                         .as_ref()
                         .map_or(true, |kind| kind == &event.unsigned.kind)
+                    && matches_cursor(filter, event)
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -57,6 +58,22 @@ impl EventStore for InMemoryEventStore {
                 .cmp(&right.unsigned.created_at)
                 .then_with(|| left.id.cmp(&right.id))
         });
+        if let Some(limit) = filter.limit {
+            events.truncate(limit);
+        }
+
         Ok(events)
+    }
+}
+
+fn matches_cursor(filter: &EventFilter, event: &SignedEvent) -> bool {
+    match (filter.after_created_at, filter.after_id.as_ref()) {
+        (Some(after_created_at), Some(after_id)) => {
+            event.unsigned.created_at > after_created_at
+                || (event.unsigned.created_at == after_created_at
+                    && event.id.as_str() > after_id.as_str())
+        }
+        (Some(after_created_at), None) => event.unsigned.created_at > after_created_at,
+        (None, _) => true,
     }
 }

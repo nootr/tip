@@ -150,8 +150,7 @@ async fn identity_events(
         .map_err(|_| ApiError::internal("store lock poisoned"))?;
     let filter = EventFilter {
         subject: Some(pubkey),
-        issuer: None,
-        kind: None,
+        ..EventFilter::default()
     };
     let events = use_cases::query_events(&*store, &filter)
         .map_err(|err| ApiError::internal(err.to_string()))?;
@@ -190,6 +189,9 @@ struct EventQuery {
     issuer: Option<String>,
     #[serde(rename = "type")]
     kind: Option<String>,
+    after_created_at: Option<i64>,
+    after_id: Option<String>,
+    limit: Option<usize>,
 }
 
 impl EventQuery {
@@ -200,10 +202,23 @@ impl EventQuery {
             ),
             None => None,
         };
+        if self.after_id.is_some() && self.after_created_at.is_none() {
+            return Err(ApiError::bad_request(
+                "after_id requires after_created_at for cursor queries",
+            ));
+        }
+
+        if matches!(self.limit, Some(0)) {
+            return Err(ApiError::bad_request("limit must be greater than zero"));
+        }
+
         Ok(EventFilter {
             subject: self.subject,
             issuer: self.issuer,
             kind,
+            after_created_at: self.after_created_at,
+            after_id: self.after_id,
+            limit: self.limit,
         })
     }
 }

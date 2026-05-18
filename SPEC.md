@@ -175,7 +175,7 @@ Nodes MUST NOT treat external claims as true merely because the event is valid.
 - `POST /events`
 - `POST /events/batch`
 - `GET /events/{id}`
-- `GET /events?subject=...&issuer=...&type=...`
+- `GET /events?subject=...&issuer=...&type=...&after_created_at=...&after_id=...&limit=...`
 - `GET /identities/{pubkey}/events`
 
 ### Batch event submission
@@ -194,6 +194,34 @@ Nodes MUST NOT treat external claims as true merely because the event is valid.
 ```
 
 Batch submission is idempotent: submitting an already stored valid event is still accepted and does not create a duplicate.
+
+### Event listing cursor
+
+`GET /events` returns events ordered by:
+
+```text
+created_at ASC, id ASC
+```
+
+Optional query parameters:
+
+- `subject`
+- `issuer`
+- `type`
+- `after_created_at`
+- `after_id`
+- `limit`
+
+Cursor semantics:
+
+```sql
+created_at > after_created_at
+OR (created_at = after_created_at AND id > after_id)
+```
+
+`after_id` requires `after_created_at`. If `after_created_at` is provided without `after_id`, nodes return events with `created_at > after_created_at`.
+
+Nodes default to `limit=500` when no limit is provided.
 
 ## Privacy and safety
 

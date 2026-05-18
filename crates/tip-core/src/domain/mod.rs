@@ -70,6 +70,9 @@ pub struct EventFilter {
     pub subject: Option<String>,
     pub issuer: Option<String>,
     pub kind: Option<EventType>,
+    pub after_created_at: Option<i64>,
+    pub after_id: Option<String>,
+    pub limit: Option<usize>,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]

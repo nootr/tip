@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, ToSql};
 use tip_core::{
     domain::{EventFilter, EventType},
     ports::{EventStore, StoreError},
@@ -79,25 +79,38 @@ impl EventStore for SqliteEventStore {
 
     fn query(&self, filter: &EventFilter) -> Result<Vec<SignedEvent>, StoreError> {
         let mut sql = "SELECT raw_json FROM events WHERE 1=1".to_string();
-        let mut values: Vec<String> = Vec::new();
+        let mut values: Vec<Box<dyn ToSql>> = Vec::new();
 
         if let Some(subject) = &filter.subject {
             sql.push_str(" AND subject = ?");
-            values.push(subject.clone());
+            values.push(Box::new(subject.clone()));
         }
         if let Some(issuer) = &filter.issuer {
             sql.push_str(" AND issuer = ?");
-            values.push(issuer.clone());
+            values.push(Box::new(issuer.clone()));
         }
         if let Some(kind) = &filter.kind {
             sql.push_str(" AND type = ?");
-            values.push(kind.to_string());
+            values.push(Box::new(kind.to_string()));
         }
-        sql.push_str(" ORDER BY created_at ASC, id ASC LIMIT 500");
+        match (filter.after_created_at, filter.after_id.as_ref()) {
+            (Some(after_created_at), Some(after_id)) => {
+                sql.push_str(" AND (created_at > ? OR (created_at = ? AND id > ?))");
+                values.push(Box::new(after_created_at));
+                values.push(Box::new(after_created_at));
+                values.push(Box::new(after_id.clone()));
+            }
+            (Some(after_created_at), None) => {
+                sql.push_str(" AND created_at > ?");
+                values.push(Box::new(after_created_at));
+            }
+            (None, _) => {}
+        }
+        sql.push_str(" ORDER BY created_at ASC, id ASC LIMIT ?");
+        values.push(Box::new(filter.limit.unwrap_or(500) as i64));
 
         let mut statement = self.connection.prepare(&sql).map_err(to_store_error)?;
-        let value_refs: Vec<&dyn rusqlite::ToSql> =
-            values.iter().map(|v| v as &dyn rusqlite::ToSql).collect();
+        let value_refs: Vec<&dyn ToSql> = values.iter().map(|value| value.as_ref()).collect();
         let rows = statement
             .query_map(value_refs.as_slice(), |row| row.get::<_, String>(0))
             .map_err(to_store_error)?;

@@ -263,6 +263,113 @@ async fn post_event_rejects_tampered_event() {
 }
 
 #[tokio::test]
+async fn query_events_supports_limit_and_cursor() {
+    let db = TestDb::new();
+    let app = db.app();
+    let signer = Ed25519Keypair::generate();
+    let identity = use_cases::create_identity(&FixedClock, &signer).unwrap();
+    let claim = use_cases::add_claim(&FixedClock, &signer, "github", "joris", None).unwrap();
+    let revocation = use_cases::revoke_claim(&FixedClock, &signer, &claim.id).unwrap();
+
+    app.clone()
+        .oneshot(json_request(
+            Method::POST,
+            "/events/batch",
+            &vec![identity, claim, revocation],
+        ))
+        .await
+        .unwrap();
+
+    let first_page = app
+        .clone()
+        .oneshot(request(
+            Method::GET,
+            &format!("/events?subject={}&limit=1", signer.public_key()),
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(first_page.status(), StatusCode::OK);
+    let first_page: Vec<SignedEvent> = serde_json::from_value(json_body(first_page).await).unwrap();
+    assert_eq!(first_page.len(), 1);
+
+    let cursor = &first_page[0];
+    let second_page = app
+        .oneshot(request(
+            Method::GET,
+            &format!(
+                "/events?subject={}&after_created_at={}&after_id={}&limit=10",
+                signer.public_key(),
+                cursor.unsigned.created_at,
+                cursor.id
+            ),
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(second_page.status(), StatusCode::OK);
+    let second_page: Vec<SignedEvent> =
+        serde_json::from_value(json_body(second_page).await).unwrap();
+    assert_eq!(second_page.len(), 2);
+    assert!(!second_page.iter().any(|event| event.id == cursor.id));
+}
+
+#[tokio::test]
+async fn query_events_cursor_rejects_after_id_without_timestamp() {
+    let db = TestDb::new();
+    let response = db
+        .app()
+        .oneshot(request(
+            Method::GET,
+            "/events?after_id=sha256:abc",
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert!(json_body(response).await["error"]
+        .as_str()
+        .unwrap()
+        .contains("after_id requires after_created_at"));
+}
+
+#[tokio::test]
+async fn query_events_cursor_keeps_type_filters() {
+    let db = TestDb::new();
+    let app = db.app();
+    let signer = Ed25519Keypair::generate();
+    let identity = use_cases::create_identity(&FixedClock, &signer).unwrap();
+    let claim = use_cases::add_claim(&FixedClock, &signer, "github", "joris", None).unwrap();
+
+    app.clone()
+        .oneshot(json_request(
+            Method::POST,
+            "/events/batch",
+            &vec![identity, claim.clone()],
+        ))
+        .await
+        .unwrap();
+
+    let response = app
+        .oneshot(request(
+            Method::GET,
+            &format!(
+                "/events?subject={}&type=claim.added&limit=10",
+                signer.public_key()
+            ),
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let events: Vec<SignedEvent> = serde_json::from_value(json_body(response).await).unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].id, claim.id);
+}
+
+#[tokio::test]
 async fn query_events_filters_by_subject() {
     let db = TestDb::new();
     let app = db.app();
