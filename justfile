@@ -7,7 +7,7 @@ fmt:
     cargo fmt
 
 test:
-    cargo test
+    cargo test --all-targets
 
 lint:
     cargo clippy --all-targets -- -D warnings
