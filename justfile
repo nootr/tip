@@ -21,4 +21,4 @@ vectors:
     cargo run -p tip-core --example generate_test_vectors > test-vectors/tip-0.1.json
 
 node port="8080":
-    TIP_NODE_BIND="127.0.0.1:{{port}}" cargo run -p tip-node
+    cargo run -p tip-node -- serve --bind "127.0.0.1:{{port}}"
