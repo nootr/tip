@@ -2,7 +2,9 @@ use serde_json::{json, Value};
 
 use crate::{
     domain::{DomainError, EventFilter, EventType, SignedEvent, UnsignedEvent},
-    ports::{Clock, CryptoError, EventStore, Signer, StoreError, Verifier},
+    ports::{
+        Clock, CryptoError, EventStore, PeerError, PeerEventClient, Signer, StoreError, Verifier,
+    },
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -13,6 +15,8 @@ pub enum UseCaseError {
     Crypto(#[from] CryptoError),
     #[error(transparent)]
     Store(#[from] StoreError),
+    #[error(transparent)]
+    Peer(#[from] PeerError),
 }
 
 pub fn create_identity(
@@ -164,14 +168,77 @@ pub fn query_events(
     Ok(store.query(filter)?)
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SyncSummary {
+    pub pulled: usize,
+    pub accepted: usize,
+    pub rejected: usize,
+}
+
+pub fn sync_from_peer(
+    peer: &impl PeerEventClient,
+    store: &impl EventStore,
+    verifier: &impl Verifier,
+    page_limit: usize,
+) -> Result<SyncSummary, UseCaseError> {
+    let page_limit = page_limit.max(1);
+    let mut filter = EventFilter {
+        limit: Some(page_limit),
+        ..EventFilter::default()
+    };
+    let mut summary = SyncSummary::default();
+
+    loop {
+        let events = peer.list_events(&filter)?;
+        if events.is_empty() {
+            break;
+        }
+
+        summary.pulled += events.len();
+
+        for event in &events {
+            match submit_event(store, verifier, event) {
+                Ok(()) => summary.accepted += 1,
+                Err(_) => summary.rejected += 1,
+            }
+        }
+
+        let last = events.last().expect("events is not empty");
+        filter.after_created_at = Some(last.unsigned.created_at);
+        filter.after_id = Some(last.id.clone());
+
+        if events.len() < page_limit {
+            break;
+        }
+    }
+
+    Ok(summary)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::crypto::{Ed25519Keypair, Ed25519Verifier};
-    use crate::ports::Clock;
+    use crate::ports::{Clock, EventStore, PeerError, PeerEventClient};
     use crate::testing::InMemoryEventStore;
 
     struct FixedClock;
+
+    struct StaticPeer {
+        events: Vec<SignedEvent>,
+    }
+
+    impl PeerEventClient for StaticPeer {
+        fn list_events(&self, filter: &EventFilter) -> Result<Vec<SignedEvent>, PeerError> {
+            let store = InMemoryEventStore::new();
+            for event in &self.events {
+                store.append(event).unwrap();
+            }
+            store
+                .query(filter)
+                .map_err(|err| PeerError::Failure(err.to_string()))
+        }
+    }
 
     impl Clock for FixedClock {
         fn now_unix_seconds(&self) -> i64 {
@@ -224,6 +291,24 @@ mod tests {
         assert!(events
             .iter()
             .any(|event| event.unsigned.kind == EventType::ClaimAdded));
+    }
+
+    #[test]
+    fn sync_from_peer_pulls_pages_into_store() {
+        let keypair = Ed25519Keypair::generate();
+        let identity = create_identity(&FixedClock, &keypair).unwrap();
+        let claim = add_claim(&FixedClock, &keypair, "github", "joris", None).unwrap();
+        let peer = StaticPeer {
+            events: vec![identity, claim],
+        };
+        let store = InMemoryEventStore::new();
+
+        let summary = sync_from_peer(&peer, &store, &Ed25519Verifier, 1).unwrap();
+
+        assert_eq!(summary.pulled, 2);
+        assert_eq!(summary.accepted, 2);
+        assert_eq!(summary.rejected, 0);
+        assert_eq!(store.query(&EventFilter::default()).unwrap().len(), 2);
     }
 
     #[test]

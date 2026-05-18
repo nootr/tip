@@ -19,6 +19,10 @@ pub trait EventStore {
     fn query(&self, filter: &EventFilter) -> Result<Vec<SignedEvent>, StoreError>;
 }
 
+pub trait PeerEventClient {
+    fn list_events(&self, filter: &EventFilter) -> Result<Vec<SignedEvent>, PeerError>;
+}
+
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum CryptoError {
     #[error("invalid key: {0}")]
@@ -32,5 +36,11 @@ pub enum CryptoError {
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
     #[error("store failure: {0}")]
+    Failure(String),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum PeerError {
+    #[error("peer failure: {0}")]
     Failure(String),
 }

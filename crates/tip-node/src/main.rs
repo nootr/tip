@@ -1,12 +1,17 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand};
+use serde_json::json;
 use std::{
     net::SocketAddr,
     sync::{Arc, Mutex},
 };
+use tip_core::{crypto::Ed25519Verifier, use_cases};
 
 use tip_node::{
-    adapters::{node_key_file, sqlite_event_store::SqliteEventStore},
+    adapters::{
+        http_peer_event_client::HttpPeerEventClient, node_key_file,
+        sqlite_event_store::SqliteEventStore,
+    },
     http::{router, AppState},
 };
 
@@ -24,6 +29,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     Serve(ServeCommand),
+    Sync(SyncCommand),
 }
 
 #[derive(Parser)]
@@ -36,15 +42,27 @@ struct ServeCommand {
     key: String,
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
-    let command = match cli.command {
-        Some(Command::Serve(command)) => command,
-        None => ServeCommand::parse_from(["tip-node"]),
-    };
+#[derive(Parser)]
+struct SyncCommand {
+    #[arg(long)]
+    peer: String,
+    #[arg(long, env = "TIP_NODE_DB", default_value = "tip-node.sqlite3")]
+    db: String,
+    #[arg(long, default_value_t = 500)]
+    limit: usize,
+}
 
-    serve(command).await
+fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+    match cli.command {
+        Some(Command::Serve(command)) => run_server(command),
+        Some(Command::Sync(command)) => sync(command),
+        None => run_server(ServeCommand::parse_from(["tip-node"])),
+    }
+}
+
+fn run_server(command: ServeCommand) -> anyhow::Result<()> {
+    tokio::runtime::Runtime::new()?.block_on(serve(command))
 }
 
 async fn serve(command: ServeCommand) -> anyhow::Result<()> {
@@ -57,5 +75,22 @@ async fn serve(command: ServeCommand) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
     eprintln!("TIP node listening on http://{}", addr);
     axum::serve(listener, router(state)).await?;
+    Ok(())
+}
+
+fn sync(command: SyncCommand) -> anyhow::Result<()> {
+    let peer = HttpPeerEventClient::new(command.peer);
+    let store = SqliteEventStore::open(&command.db).context("open SQLite event store")?;
+    let summary = use_cases::sync_from_peer(&peer, &store, &Ed25519Verifier, command.limit)?;
+
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({
+            "pulled": summary.pulled,
+            "accepted": summary.accepted,
+            "rejected": summary.rejected,
+        }))?
+    );
+
     Ok(())
 }
