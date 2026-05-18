@@ -81,6 +81,7 @@ enum AttestCommand {
 
 #[derive(Args)]
 struct AttestIssue {
+    #[arg(allow_hyphen_values = true)]
     subject: String,
     claim: String,
     #[arg(long)]
@@ -91,6 +92,7 @@ struct AttestIssue {
 
 #[derive(Args)]
 struct AttestRevoke {
+    #[arg(allow_hyphen_values = true)]
     subject: String,
     attestation_id: String,
     #[command(flatten)]
@@ -126,15 +128,15 @@ struct EventSubmitBatch {
 
 #[derive(Args)]
 struct QueryCommand {
-    #[arg(long)]
+    #[arg(long, allow_hyphen_values = true)]
     subject: Option<String>,
-    #[arg(long)]
+    #[arg(long, allow_hyphen_values = true)]
     issuer: Option<String>,
     #[arg(long = "type")]
     kind: Option<String>,
     #[arg(long)]
     after_created_at: Option<i64>,
-    #[arg(long)]
+    #[arg(long, allow_hyphen_values = true)]
     after_id: Option<String>,
     #[arg(long)]
     limit: Option<usize>,
