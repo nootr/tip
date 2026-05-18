@@ -101,6 +101,7 @@ struct AttestRevoke {
 enum EventCommand {
     Verify(EventFile),
     Submit(EventSubmit),
+    SubmitBatch(EventSubmitBatch),
 }
 
 #[derive(Args)]
@@ -111,6 +112,14 @@ struct EventFile {
 #[derive(Args)]
 struct EventSubmit {
     path: PathBuf,
+    #[arg(long, default_value = "http://127.0.0.1:8080")]
+    node: String,
+}
+
+#[derive(Args)]
+struct EventSubmitBatch {
+    #[arg(required = true)]
+    paths: Vec<PathBuf>,
     #[arg(long, default_value = "http://127.0.0.1:8080")]
     node: String,
 }
@@ -203,6 +212,18 @@ fn main() -> anyhow::Result<()> {
             let url = format!("{}/events", args.node.trim_end_matches('/'));
             let client = reqwest::blocking::Client::new();
             let response = client.post(url).json(&event).send()?.error_for_status()?;
+            let accepted: Value = response.json()?;
+            println!("{}", serde_json::to_string_pretty(&accepted)?);
+        }
+        Command::Event(EventCommand::SubmitBatch(args)) => {
+            let events = args
+                .paths
+                .iter()
+                .map(read_event)
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            let url = format!("{}/events/batch", args.node.trim_end_matches('/'));
+            let client = reqwest::blocking::Client::new();
+            let response = client.post(url).json(&events).send()?.error_for_status()?;
             let accepted: Value = response.json()?;
             println!("{}", serde_json::to_string_pretty(&accepted)?);
         }

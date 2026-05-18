@@ -41,6 +41,53 @@ fn cli_can_submit_to_and_query_from_node() {
     assert_eq!(events[0]["subject"], public_key);
 }
 
+#[test]
+fn cli_can_submit_batch_to_and_query_from_node() {
+    let env = E2eEnv::new();
+    let base_url = env.node.base_url.clone();
+
+    let key = env.run_json(&["key", "generate", "--name", "default"]);
+    let public_key = key["public_key"].as_str().unwrap();
+
+    let identity_path = env.path("identity.json");
+    env.run_ok(&[
+        "identity",
+        "create",
+        "--out",
+        identity_path.to_str().unwrap(),
+    ]);
+
+    let claim_path = env.path("claim.json");
+    env.run_ok(&[
+        "claim",
+        "add",
+        "github",
+        "joris",
+        "--out",
+        claim_path.to_str().unwrap(),
+    ]);
+
+    let batch_response = env.run_json(&[
+        "event",
+        "submit-batch",
+        identity_path.to_str().unwrap(),
+        claim_path.to_str().unwrap(),
+        "--node",
+        &base_url,
+    ]);
+    assert_eq!(batch_response["accepted"], 2);
+    assert_eq!(batch_response["rejected"], 0);
+
+    let query = env.run_json(&["query", "--subject", public_key, "--node", &base_url]);
+    let events = query.as_array().unwrap();
+
+    assert_eq!(events.len(), 2);
+    assert!(events
+        .iter()
+        .any(|event| event["type"] == "identity.created"));
+    assert!(events.iter().any(|event| event["type"] == "claim.added"));
+}
+
 struct E2eEnv {
     temp_dir: TempDir,
     node: NodeProcess,

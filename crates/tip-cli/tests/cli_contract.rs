@@ -97,6 +97,16 @@ fn claim_and_attestation_commands_create_verifiable_events() {
     );
 }
 
+#[test]
+fn submit_batch_command_is_available() {
+    let env = CliEnv::new();
+    let output = env.run_ok(&["event", "submit-batch", "--help"]);
+    let help = String::from_utf8(output).unwrap();
+
+    assert!(help.contains("Usage: tip event submit-batch"));
+    assert!(help.contains("--node"));
+}
+
 struct CliEnv {
     temp_dir: TempDir,
 }
