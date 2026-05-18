@@ -1,7 +1,7 @@
 use rusqlite::{params, Connection, ToSql};
 use tip_core::{
     domain::{EventFilter, EventType},
-    ports::{EventStore, StoreError},
+    ports::{EventStore, PeerSyncState, PeerSyncStateStore, StoreError},
     SignedEvent,
 };
 
@@ -33,9 +33,61 @@ impl SqliteEventStore {
                 CREATE INDEX IF NOT EXISTS idx_events_subject ON events(subject);
                 CREATE INDEX IF NOT EXISTS idx_events_issuer ON events(issuer);
                 CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
+
+                CREATE TABLE IF NOT EXISTS peer_sync_state (
+                    peer_url TEXT PRIMARY KEY NOT NULL,
+                    last_created_at INTEGER NOT NULL,
+                    last_id TEXT NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );
                 "#,
             )
             .map_err(to_store_error)
+    }
+}
+
+impl PeerSyncStateStore for SqliteEventStore {
+    fn get_peer_sync_state(&self, peer_url: &str) -> Result<Option<PeerSyncState>, StoreError> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT peer_url, last_created_at, last_id, updated_at FROM peer_sync_state WHERE peer_url = ?1",
+            )
+            .map_err(to_store_error)?;
+
+        let mut rows = statement.query(params![peer_url]).map_err(to_store_error)?;
+        if let Some(row) = rows.next().map_err(to_store_error)? {
+            Ok(Some(PeerSyncState {
+                peer_url: row.get(0).map_err(to_store_error)?,
+                last_created_at: row.get(1).map_err(to_store_error)?,
+                last_id: row.get(2).map_err(to_store_error)?,
+                updated_at: row.get(3).map_err(to_store_error)?,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn put_peer_sync_state(&self, state: &PeerSyncState) -> Result<(), StoreError> {
+        self.connection
+            .execute(
+                r#"
+                INSERT INTO peer_sync_state (peer_url, last_created_at, last_id, updated_at)
+                VALUES (?1, ?2, ?3, ?4)
+                ON CONFLICT(peer_url) DO UPDATE SET
+                    last_created_at = excluded.last_created_at,
+                    last_id = excluded.last_id,
+                    updated_at = excluded.updated_at
+                "#,
+                params![
+                    state.peer_url,
+                    state.last_created_at,
+                    state.last_id,
+                    state.updated_at,
+                ],
+            )
+            .map_err(to_store_error)?;
+        Ok(())
     }
 }
 

@@ -1,5 +1,13 @@
 use crate::domain::{EventFilter, SignedEvent};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeerSyncState {
+    pub peer_url: String,
+    pub last_created_at: i64,
+    pub last_id: String,
+    pub updated_at: i64,
+}
+
 pub trait Clock {
     fn now_unix_seconds(&self) -> i64;
 }
@@ -17,6 +25,11 @@ pub trait EventStore {
     fn append(&self, event: &SignedEvent) -> Result<(), StoreError>;
     fn get(&self, id: &str) -> Result<Option<SignedEvent>, StoreError>;
     fn query(&self, filter: &EventFilter) -> Result<Vec<SignedEvent>, StoreError>;
+}
+
+pub trait PeerSyncStateStore {
+    fn get_peer_sync_state(&self, peer_url: &str) -> Result<Option<PeerSyncState>, StoreError>;
+    fn put_peer_sync_state(&self, state: &PeerSyncState) -> Result<(), StoreError>;
 }
 
 pub trait PeerEventClient {

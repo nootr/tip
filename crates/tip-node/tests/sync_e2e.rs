@@ -10,16 +10,23 @@ use std::{
 use tempfile::TempDir;
 use tip_core::{
     crypto::Ed25519Keypair,
-    ports::{Clock, EventStore, Signer},
+    ports::{Clock, EventStore, PeerSyncStateStore, Signer},
     use_cases, EventFilter,
 };
 use tip_node::adapters::sqlite_event_store::SqliteEventStore;
 
 struct FixedClock;
+struct LaterClock;
 
 impl Clock for FixedClock {
     fn now_unix_seconds(&self) -> i64 {
         1_700_000_000
+    }
+}
+
+impl Clock for LaterClock {
+    fn now_unix_seconds(&self) -> i64 {
+        1_700_000_001
     }
 }
 
@@ -34,24 +41,7 @@ fn node_sync_pulls_events_from_peer() {
     submit_events(&peer, &[identity.clone(), claim.clone()]);
 
     let local_db = env.path("local.sqlite3");
-    let output = AssertCommand::cargo_bin("tip-node")
-        .unwrap()
-        .args([
-            "sync",
-            "--peer",
-            &peer.base_url,
-            "--db",
-            local_db.to_str().unwrap(),
-            "--limit",
-            "1",
-        ])
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-
-    let summary: Value = serde_json::from_slice(&output).unwrap();
+    let summary = sync_peer(&peer, &local_db, 1);
     assert_eq!(
         summary,
         json!({ "pulled": 2, "accepted": 2, "rejected": 0 })
@@ -68,6 +58,26 @@ fn node_sync_pulls_events_from_peer() {
     assert_eq!(events.len(), 2);
     assert!(events.iter().any(|event| event.id == identity.id));
     assert!(events.iter().any(|event| event.id == claim.id));
+    assert!(store.get_peer_sync_state(&peer.base_url).unwrap().is_some());
+
+    let second = sync_peer(&peer, &local_db, 1);
+    assert_eq!(second, json!({ "pulled": 0, "accepted": 0, "rejected": 0 }));
+
+    let later_claim =
+        use_cases::add_claim(&LaterClock, &signer, "domain", "example.com", None).unwrap();
+    submit_events(&peer, std::slice::from_ref(&later_claim));
+
+    let third = sync_peer(&peer, &local_db, 1);
+    assert_eq!(third, json!({ "pulled": 1, "accepted": 1, "rejected": 0 }));
+
+    let events = store
+        .query(&EventFilter {
+            subject: Some(signer.public_key()),
+            ..EventFilter::default()
+        })
+        .unwrap();
+    assert_eq!(events.len(), 3);
+    assert!(events.iter().any(|event| event.id == later_claim.id));
 }
 
 #[test]
@@ -201,6 +211,27 @@ fn node_serve_sync_on_start_requires_configured_peers() {
         .stderr(predicates::str::contains(
             "--sync-on-start requires --config",
         ));
+}
+
+fn sync_peer(peer: &NodeProcess, local_db: &std::path::Path, limit: usize) -> Value {
+    let output = AssertCommand::cargo_bin("tip-node")
+        .unwrap()
+        .args([
+            "sync",
+            "--peer",
+            &peer.base_url,
+            "--db",
+            local_db.to_str().unwrap(),
+            "--limit",
+            &limit.to_string(),
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    serde_json::from_slice(&output).unwrap()
 }
 
 fn submit_events(peer: &NodeProcess, events: &[tip_core::SignedEvent]) {

@@ -3,7 +3,8 @@ use serde_json::{json, Value};
 use crate::{
     domain::{DomainError, EventFilter, EventType, SignedEvent, UnsignedEvent},
     ports::{
-        Clock, CryptoError, EventStore, PeerError, PeerEventClient, Signer, StoreError, Verifier,
+        Clock, CryptoError, EventStore, PeerError, PeerEventClient, PeerSyncState,
+        PeerSyncStateStore, Signer, StoreError, Verifier,
     },
 };
 
@@ -175,6 +176,12 @@ pub struct SyncSummary {
     pub rejected: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SyncFromPeerOptions {
+    pub page_limit: usize,
+    pub from_beginning: bool,
+}
+
 pub fn sync_from_peer(
     peer: &impl PeerEventClient,
     store: &impl EventStore,
@@ -194,14 +201,7 @@ pub fn sync_from_peer(
             break;
         }
 
-        summary.pulled += events.len();
-
-        for event in &events {
-            match submit_event(store, verifier, event) {
-                Ok(()) => summary.accepted += 1,
-                Err(_) => summary.rejected += 1,
-            }
-        }
+        apply_synced_events(store, verifier, &events, &mut summary);
 
         let last = events.last().expect("events is not empty");
         filter.after_created_at = Some(last.unsigned.created_at);
@@ -215,11 +215,75 @@ pub fn sync_from_peer(
     Ok(summary)
 }
 
+pub fn sync_from_peer_with_state(
+    peer_url: &str,
+    peer: &impl PeerEventClient,
+    store: &impl EventStore,
+    state_store: &impl PeerSyncStateStore,
+    verifier: &impl Verifier,
+    clock: &impl Clock,
+    options: SyncFromPeerOptions,
+) -> Result<SyncSummary, UseCaseError> {
+    let mut filter = EventFilter::default();
+
+    if !options.from_beginning {
+        if let Some(state) = state_store.get_peer_sync_state(peer_url)? {
+            filter.after_created_at = Some(state.last_created_at);
+            filter.after_id = Some(state.last_id);
+        }
+    }
+
+    let page_limit = options.page_limit.max(1);
+    filter.limit = Some(page_limit);
+    let mut summary = SyncSummary::default();
+
+    loop {
+        let events = peer.list_events(&filter)?;
+        if events.is_empty() {
+            break;
+        }
+
+        apply_synced_events(store, verifier, &events, &mut summary);
+
+        let last = events.last().expect("events is not empty");
+        filter.after_created_at = Some(last.unsigned.created_at);
+        filter.after_id = Some(last.id.clone());
+        state_store.put_peer_sync_state(&PeerSyncState {
+            peer_url: peer_url.to_string(),
+            last_created_at: last.unsigned.created_at,
+            last_id: last.id.clone(),
+            updated_at: clock.now_unix_seconds(),
+        })?;
+
+        if events.len() < page_limit {
+            break;
+        }
+    }
+
+    Ok(summary)
+}
+
+fn apply_synced_events(
+    store: &impl EventStore,
+    verifier: &impl Verifier,
+    events: &[SignedEvent],
+    summary: &mut SyncSummary,
+) {
+    summary.pulled += events.len();
+
+    for event in events {
+        match submit_event(store, verifier, event) {
+            Ok(()) => summary.accepted += 1,
+            Err(_) => summary.rejected += 1,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::crypto::{Ed25519Keypair, Ed25519Verifier};
-    use crate::ports::{Clock, EventStore, PeerError, PeerEventClient};
+    use crate::ports::{Clock, EventStore, PeerError, PeerEventClient, PeerSyncStateStore};
     use crate::testing::InMemoryEventStore;
 
     struct FixedClock;
@@ -309,6 +373,48 @@ mod tests {
         assert_eq!(summary.accepted, 2);
         assert_eq!(summary.rejected, 0);
         assert_eq!(store.query(&EventFilter::default()).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn sync_from_peer_with_state_resumes_from_last_cursor() {
+        let keypair = Ed25519Keypair::generate();
+        let identity = create_identity(&FixedClock, &keypair).unwrap();
+        let claim = add_claim(&FixedClock, &keypair, "github", "joris", None).unwrap();
+        let store = InMemoryEventStore::new();
+        let state_store = InMemoryEventStore::new();
+        let peer = StaticPeer {
+            events: vec![identity.clone(), claim.clone()],
+        };
+
+        let options = SyncFromPeerOptions {
+            page_limit: 1,
+            from_beginning: false,
+        };
+        let first = sync_from_peer_with_state(
+            "peer-a",
+            &peer,
+            &store,
+            &state_store,
+            &Ed25519Verifier,
+            &FixedClock,
+            options,
+        )
+        .unwrap();
+        let second = sync_from_peer_with_state(
+            "peer-a",
+            &peer,
+            &store,
+            &state_store,
+            &Ed25519Verifier,
+            &FixedClock,
+            options,
+        )
+        .unwrap();
+
+        assert_eq!(first.pulled, 2);
+        assert_eq!(first.accepted, 2);
+        assert_eq!(second.pulled, 0);
+        assert!(state_store.get_peer_sync_state("peer-a").unwrap().is_some());
     }
 
     #[test]

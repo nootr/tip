@@ -2,17 +2,31 @@ use std::{cell::RefCell, collections::BTreeMap};
 
 use crate::{
     domain::{EventFilter, SignedEvent},
-    ports::{EventStore, StoreError},
+    ports::{EventStore, PeerSyncState, PeerSyncStateStore, StoreError},
 };
 
 #[derive(Default)]
 pub struct InMemoryEventStore {
     events: RefCell<BTreeMap<String, SignedEvent>>,
+    peer_sync_states: RefCell<BTreeMap<String, PeerSyncState>>,
 }
 
 impl InMemoryEventStore {
     pub fn new() -> Self {
         Self::default()
+    }
+}
+
+impl PeerSyncStateStore for InMemoryEventStore {
+    fn get_peer_sync_state(&self, peer_url: &str) -> Result<Option<PeerSyncState>, StoreError> {
+        Ok(self.peer_sync_states.borrow().get(peer_url).cloned())
+    }
+
+    fn put_peer_sync_state(&self, state: &PeerSyncState) -> Result<(), StoreError> {
+        self.peer_sync_states
+            .borrow_mut()
+            .insert(state.peer_url.clone(), state.clone());
+        Ok(())
     }
 }
 

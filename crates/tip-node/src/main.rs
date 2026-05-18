@@ -4,8 +4,13 @@ use serde_json::json;
 use std::{
     net::SocketAddr,
     sync::{Arc, Mutex},
+    time::{SystemTime, UNIX_EPOCH},
 };
-use tip_core::{crypto::Ed25519Verifier, ports::EventStore, use_cases};
+use tip_core::{
+    crypto::Ed25519Verifier,
+    ports::Clock,
+    use_cases::{self, SyncFromPeerOptions},
+};
 
 use tip_node::{
     adapters::{
@@ -47,6 +52,8 @@ struct ServeCommand {
     sync_on_start: bool,
     #[arg(long, default_value_t = 500)]
     sync_limit: usize,
+    #[arg(long)]
+    sync_from_beginning: bool,
 }
 
 #[derive(Parser)]
@@ -59,6 +66,8 @@ struct SyncCommand {
     db: String,
     #[arg(long, default_value_t = 500)]
     limit: usize,
+    #[arg(long)]
+    from_beginning: bool,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -81,8 +90,14 @@ async fn serve(command: ServeCommand) -> anyhow::Result<()> {
 
     if command.sync_on_start {
         let peer_urls = config_peer_urls(command.config.as_deref())?;
-        let summary =
-            tokio::task::block_in_place(|| sync_peers(&peer_urls, &store, command.sync_limit))?;
+        let summary = tokio::task::block_in_place(|| {
+            sync_peers(
+                &peer_urls,
+                &store,
+                command.sync_limit,
+                command.sync_from_beginning,
+            )
+        })?;
         eprintln!(
             "TIP startup sync completed: pulled={}, accepted={}, rejected={}",
             summary.pulled, summary.accepted, summary.rejected
@@ -101,7 +116,7 @@ async fn serve(command: ServeCommand) -> anyhow::Result<()> {
 fn sync(command: SyncCommand) -> anyhow::Result<()> {
     let peer_urls = sync_peer_urls(&command)?;
     let store = SqliteEventStore::open(&command.db).context("open SQLite event store")?;
-    let summary = sync_peers(&peer_urls, &store, command.limit)?;
+    let summary = sync_peers(&peer_urls, &store, command.limit, command.from_beginning)?;
 
     let output = if peer_urls.len() == 1 && command.config.is_none() && command.peer.len() == 1 {
         json!({
@@ -131,10 +146,22 @@ struct MultiPeerSyncSummary {
     peers: Vec<serde_json::Value>,
 }
 
+struct SystemClock;
+
+impl Clock for SystemClock {
+    fn now_unix_seconds(&self) -> i64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64
+    }
+}
+
 fn sync_peers(
     peer_urls: &[String],
-    store: &impl EventStore,
+    store: &SqliteEventStore,
     limit: usize,
+    from_beginning: bool,
 ) -> anyhow::Result<MultiPeerSyncSummary> {
     let mut peer_summaries = Vec::with_capacity(peer_urls.len());
     let mut total_pulled = 0usize;
@@ -143,8 +170,19 @@ fn sync_peers(
 
     for peer_url in peer_urls {
         let peer = HttpPeerEventClient::new(peer_url);
-        let summary = use_cases::sync_from_peer(&peer, store, &Ed25519Verifier, limit)
-            .with_context(|| format!("sync from peer {}", peer_url))?;
+        let summary = use_cases::sync_from_peer_with_state(
+            peer_url,
+            &peer,
+            store,
+            store,
+            &Ed25519Verifier,
+            &SystemClock,
+            SyncFromPeerOptions {
+                page_limit: limit,
+                from_beginning,
+            },
+        )
+        .with_context(|| format!("sync from peer {}", peer_url))?;
         total_pulled += summary.pulled;
         total_accepted += summary.accepted;
         total_rejected += summary.rejected;
