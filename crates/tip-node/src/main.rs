@@ -1,14 +1,13 @@
-mod adapters;
-mod http;
-
 use anyhow::Context;
 use std::{
     net::SocketAddr,
     sync::{Arc, Mutex},
 };
 
-use adapters::{node_key_file, sqlite_event_store::SqliteEventStore};
-use http::{router, AppState};
+use tip_node::{
+    adapters::{node_key_file, sqlite_event_store::SqliteEventStore},
+    http::{router, AppState},
+};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

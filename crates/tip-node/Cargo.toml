@@ -14,3 +14,6 @@ serde.workspace = true
 serde_json.workspace = true
 tip-core = { path = "../tip-core" }
 tokio.workspace = true
+
+[dev-dependencies]
+tower.workspace = true

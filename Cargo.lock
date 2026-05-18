@@ -1432,6 +1432,7 @@ dependencies = [
  "serde_json",
  "tip-core",
  "tokio",
+ "tower",
 ]
 
 [[package]]
