@@ -173,9 +173,27 @@ Nodes MUST NOT treat external claims as true merely because the event is valid.
 - `GET /health`
 - `GET /info`
 - `POST /events`
+- `POST /events/batch`
 - `GET /events/{id}`
 - `GET /events?subject=...&issuer=...&type=...`
 - `GET /identities/{pubkey}/events`
+
+### Batch event submission
+
+`POST /events/batch` accepts a JSON array of signed events and returns per-event results:
+
+```json
+{
+  "accepted": 1,
+  "rejected": 1,
+  "results": [
+    { "id": "sha256:...", "accepted": true, "error": null },
+    { "id": "sha256:...", "accepted": false, "error": "event id mismatch" }
+  ]
+}
+```
+
+Batch submission is idempotent: submitting an already stored valid event is still accepted and does not create a duplicate.
 
 ## Privacy and safety
 

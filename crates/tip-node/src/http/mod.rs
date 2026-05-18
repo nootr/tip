@@ -36,6 +36,7 @@ pub fn router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/info", get(info))
         .route("/events", post(post_event).get(query_events))
+        .route("/events/batch", post(post_events_batch))
         .route("/events/:id", get(get_event))
         .route("/identities/:pubkey/events", get(identity_events))
         .with_state(state)
@@ -64,6 +65,48 @@ async fn post_event(
     use_cases::submit_event(&*store, &Ed25519Verifier, &event)
         .map_err(|err| ApiError::bad_request(err.to_string()))?;
     Ok((StatusCode::ACCEPTED, Json(event)))
+}
+
+async fn post_events_batch(
+    State(state): State<AppState>,
+    Json(events): Json<Vec<SignedEvent>>,
+) -> Result<Json<BatchEventResponse>, ApiError> {
+    let store = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?;
+
+    let mut results = Vec::with_capacity(events.len());
+    let mut accepted = 0usize;
+    let mut rejected = 0usize;
+
+    for event in events {
+        let id = event.id.clone();
+        match use_cases::submit_event(&*store, &Ed25519Verifier, &event) {
+            Ok(()) => {
+                accepted += 1;
+                results.push(BatchEventResult {
+                    id: Some(id),
+                    accepted: true,
+                    error: None,
+                });
+            }
+            Err(err) => {
+                rejected += 1;
+                results.push(BatchEventResult {
+                    id: Some(id),
+                    accepted: false,
+                    error: Some(err.to_string()),
+                });
+            }
+        }
+    }
+
+    Ok(Json(BatchEventResponse {
+        accepted,
+        rejected,
+        results,
+    }))
 }
 
 async fn get_event(
@@ -125,6 +168,20 @@ struct InfoResponse {
     node_public_key: String,
     version: &'static str,
     protocol_version: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct BatchEventResponse {
+    accepted: usize,
+    rejected: usize,
+    results: Vec<BatchEventResult>,
+}
+
+#[derive(Debug, Serialize)]
+struct BatchEventResult {
+    id: Option<String>,
+    accepted: bool,
+    error: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
