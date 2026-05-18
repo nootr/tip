@@ -14,7 +14,7 @@ TIP is a portable cryptographic trust evidence protocol. It is not a global repu
 - Global scoring.
 - Blockchain dependency.
 - Private or selective disclosure events.
-- Peer discovery or federation sync.
+- Peer discovery, consensus, or global replication guarantees.
 - External proof verification by nodes.
 
 ## Identity model
@@ -222,6 +222,30 @@ OR (created_at = after_created_at AND id > after_id)
 `after_id` requires `after_created_at`. If `after_created_at` is provided without `after_id`, nodes return events with `created_at > after_created_at`.
 
 Nodes default to `limit=500` when no limit is provided.
+
+## Peer sync
+
+TIP 0.1 sync is intentionally simple and implementation-level. The protocol primitives are:
+
+- incremental reads via `GET /events` cursor pagination
+- idempotent writes via `POST /events` or `POST /events/batch`
+
+The reference node supports explicit peer lists, manual pull sync, opt-in startup sync, and persistent per-peer cursor state. This is not peer discovery, consensus, or a guarantee that all nodes converge globally.
+
+A node may store, per peer:
+
+```text
+peer_url
+last_created_at
+last_id
+updated_at
+```
+
+A later sync can resume by querying:
+
+```text
+GET /events?after_created_at=<last_created_at>&after_id=<last_id>&limit=500
+```
 
 ## Privacy and safety
 
