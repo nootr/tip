@@ -4,71 +4,186 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TIP — Trust Infrastructure Protocol</title>
-  <meta name="description" content="Portable cryptographic trust evidence for the internet.">
+  <meta name="description" content="TIP is an open-source protocol for portable, signed trust evidence: identities, claims, attestations, revocations, and peer-synced nodes.">
+  <meta name="theme-color" content="#080a0f">
+  <meta property="og:title" content="TIP — Trust Infrastructure Protocol">
+  <meta property="og:description" content="Portable cryptographic trust evidence for apps, communities, platforms, and AI agents.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://nootr.github.io/tip/">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="hero">
-    <nav>
-      <strong>TIP</strong>
-      <a href="https://github.com/nootr/tip">GitHub</a>
-      <a href="https://github.com/nootr/tip/blob/main/SPEC.md">Spec</a>
-    </nav>
-    <section>
-      <p class="eyebrow">Trust Infrastructure Protocol</p>
-      <h1>Portable trust, not another login.</h1>
-      <p class="lead">TIP is an open protocol for signed claims and attestations that can travel between apps, communities, platforms, and AI agents.</p>
-      <div class="actions">
-        <a class="button primary" href="https://github.com/nootr/tip">View on GitHub</a>
-        <a class="button" href="https://github.com/nootr/tip/blob/main/SPEC.md">Read the draft spec</a>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <nav class="nav" aria-label="Primary navigation">
+      <a class="brand" href="./" aria-label="TIP homepage">
+        <span class="brand-mark" aria-hidden="true">T</span>
+        <span>TIP</span>
+      </a>
+      <div class="nav-links">
+        <a href="#protocol">Protocol</a>
+        <a href="#node">Node</a>
+        <a href="#start">Quick start</a>
+        <a href="https://github.com/nootr/tip/blob/main/SPEC.md">Spec</a>
+        <a href="https://github.com/nootr/tip">GitHub</a>
       </div>
-    </section>
+    </nav>
   </header>
 
-  <main>
-    <section class="grid">
-      <article>
-        <h2>Cryptographic identities</h2>
-        <p>TIP identities are Ed25519 public keys. Handles like GitHub usernames or domains are verifiable claims, not the root identity.</p>
-      </article>
-      <article>
-        <h2>Signed events</h2>
-        <p>Claims, attestations, updates, and revocations are append-only signed events. Nodes store evidence; clients verify it.</p>
-      </article>
-      <article>
-        <h2>Local trust policies</h2>
-        <p>There is no global reputation score. Each app decides which issuers and signals matter for its own context.</p>
-      </article>
+  <main id="main">
+    <section class="hero section-shell">
+      <div class="hero-copy">
+        <p class="eyebrow">Trust Infrastructure Protocol · TIP 0.1 alpha</p>
+        <h1>Portable trust evidence for an internet of agents.</h1>
+        <p class="lead">TIP is an open-source protocol for signed identities, claims, attestations, and revocations. No blockchain. No global reputation score. Just verifiable public evidence that can move between systems.</p>
+        <div class="actions" aria-label="Primary actions">
+          <a class="button primary" href="https://github.com/nootr/tip">View on GitHub</a>
+          <a class="button" href="https://github.com/nootr/tip/releases">Releases</a>
+          <a class="button ghost" href="https://github.com/nootr/tip/blob/main/SPEC.md">Read spec</a>
+        </div>
+      </div>
+
+      <aside class="hero-card" aria-label="Signed event example">
+        <div class="window-bar" aria-hidden="true"><span></span><span></span><span></span></div>
+        <pre><code>{
+  "type": "claim.added",
+  "subject": "ed25519:...",
+  "issuer": "ed25519:...",
+  "payload": {
+    "claim_type": "github",
+    "value": "joris"
+  },
+  "signature": "base64url..."
+}</code></pre>
+      </aside>
     </section>
 
-    <section class="example">
-      <h2>Developer trust demo</h2>
-      <pre><code>tip key generate
-
-tip identity create --out identity.json
-
-tip claim add github joris \
-  --proof-url https://gist.github.com/... \
-  --out github-claim.json
-
-tip claim revoke &lt;claim-event-id&gt;
-
-tip event submit-batch identity.json github-claim.json
-
-tip attest issue &lt;subject-pubkey&gt; trusted_contributor \
-  --message "Useful open-source contributor"
-
-tip attest revoke &lt;subject-pubkey&gt; &lt;attestation-event-id&gt;</code></pre>
+    <section class="trust-strip section-shell" aria-label="Project highlights">
+      <div><strong>Ed25519</strong><span>signed events</span></div>
+      <div><strong>JCS/RFC8785</strong><span>canonical JSON</span></div>
+      <div><strong>SQLite</strong><span>local node store</span></div>
+      <div><strong>MIT</strong><span>open source</span></div>
     </section>
 
-    <section>
-      <h2>Roadmap</h2>
-      <ol>
-        <li>TIP 0.1 spec, Rust core, CLI, and SQLite-backed node.</li>
-        <li>Peer sync between explicitly configured nodes.</li>
-        <li>SDKs for Python, Rust, and other ecosystems.</li>
+    <section id="protocol" class="section-shell split-section">
+      <div>
+        <p class="eyebrow">Protocol model</p>
+        <h2>Trust is evidence, not a score.</h2>
+        <p>TIP keeps the base layer small: keys sign events, nodes store valid public evidence, and clients choose their own trust policy.</p>
+      </div>
+      <div class="feature-grid">
+        <article class="feature-card">
+          <span class="card-number">01</span>
+          <h3>Cryptographic identity</h3>
+          <p>The canonical identity is an Ed25519 public key. Handles, domains, and usernames are claims.</p>
+        </article>
+        <article class="feature-card">
+          <span class="card-number">02</span>
+          <h3>Signed event log</h3>
+          <p>Claims, attestations, and revocations are append-only signed events with stable SHA-256 IDs.</p>
+        </article>
+        <article class="feature-card">
+          <span class="card-number">03</span>
+          <h3>Local trust policy</h3>
+          <p>Every app decides which issuers, claims, and attestations matter in its own context.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section-shell flow-section" aria-labelledby="flow-title">
+      <div class="section-heading">
+        <p class="eyebrow">How it moves</p>
+        <h2 id="flow-title">From key to portable evidence.</h2>
+      </div>
+      <ol class="flow-list">
+        <li><span>Generate key</span><p>Create a local Ed25519 identity.</p></li>
+        <li><span>Publish claims</span><p>Sign handles, links, or public statements.</p></li>
+        <li><span>Receive attestations</span><p>Other issuers sign statements about your key.</p></li>
+        <li><span>Sync nodes</span><p>Explicit peers exchange valid events with cursor pagination.</p></li>
       </ol>
     </section>
+
+    <section id="node" class="section-shell node-section">
+      <div class="section-heading">
+        <p class="eyebrow">Reference node</p>
+        <h2>Run a small HTTP node with peer sync.</h2>
+        <p>The Rust node stores events in SQLite, exposes a compact HTTP API, and can pull from explicitly configured peers.</p>
+      </div>
+      <div class="node-grid">
+        <article class="panel">
+          <h3>Node config</h3>
+          <pre><code>[node]
+bind = "127.0.0.1:8080"
+db = "tip-node.sqlite3"
+key = "tip-node-key.json"
+
+[sync]
+on_start = true
+limit = 500
+
+[peers]
+urls = ["http://127.0.0.1:8081"]</code></pre>
+        </article>
+        <article class="panel">
+          <h3>HTTP surface</h3>
+          <ul class="api-list">
+            <li><code>GET /health</code></li>
+            <li><code>GET /info</code></li>
+            <li><code>POST /events</code></li>
+            <li><code>POST /events/batch</code></li>
+            <li><code>GET /events?limit=500</code></li>
+            <li><code>GET /events/{id}</code></li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section id="start" class="section-shell quickstart">
+      <div class="section-heading">
+        <p class="eyebrow">Quick start</p>
+        <h2>Create, submit, and query trust events.</h2>
+      </div>
+      <div class="terminal" role="region" aria-label="TIP command line quick start">
+        <div class="window-bar" aria-hidden="true"><span></span><span></span><span></span></div>
+        <pre><code>cargo install --path crates/tip-cli
+cargo install --path crates/tip-node
+
+cp tip-node.example.toml tip-node.toml
+tip-node serve --config tip-node.toml
+
+tip key generate --name default
+tip identity create --out identity.json
+tip claim add github joris --out github-claim.json
+
+tip event submit-batch identity.json github-claim.json \
+  --node http://127.0.0.1:8080
+
+tip query --subject &lt;public-key&gt; --limit 100 \
+  --node http://127.0.0.1:8080</code></pre>
+      </div>
+    </section>
+
+    <section class="section-shell cta-section">
+      <div>
+        <p class="eyebrow">Build with it</p>
+        <h2>TIP is early, useful, and intentionally small.</h2>
+        <p>Start with the spec, run a node, submit events, and decide what trust means in your application.</p>
+      </div>
+      <div class="actions">
+        <a class="button primary" href="https://github.com/nootr/tip">Clone repository</a>
+        <a class="button" href="https://github.com/nootr/tip/blob/main/README.md">Read README</a>
+      </div>
+    </section>
   </main>
+
+  <footer class="footer section-shell">
+    <p>TIP — Trust Infrastructure Protocol. MIT licensed.</p>
+    <div>
+      <a href="https://github.com/nootr/tip">GitHub</a>
+      <a href="https://github.com/nootr/tip/blob/main/SPEC.md">Spec</a>
+      <a href="https://github.com/nootr/tip/releases">Releases</a>
+    </div>
+  </footer>
 </body>
 </html>
