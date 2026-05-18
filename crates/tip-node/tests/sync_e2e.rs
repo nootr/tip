@@ -129,6 +129,80 @@ fn node_sync_pulls_events_from_configured_peers() {
     assert!(events.iter().any(|event| event.id == claim_b.id));
 }
 
+#[test]
+fn node_serve_syncs_configured_peers_on_start_when_enabled() {
+    let env = SyncEnv::new();
+    let peer = NodeProcess::start(
+        env.path("startup-peer.sqlite3"),
+        env.path("startup-peer-key.json"),
+    );
+    let signer = Ed25519Keypair::generate();
+    let identity = use_cases::create_identity(&FixedClock, &signer).unwrap();
+    let claim = use_cases::add_claim(&FixedClock, &signer, "github", "startup", None).unwrap();
+    submit_events(&peer, &[identity.clone(), claim.clone()]);
+
+    let config_path = env.path("startup-tip-node.toml");
+    std::fs::write(
+        &config_path,
+        format!("[peers]\nurls = [\"{}\"]\n", peer.base_url),
+    )
+    .unwrap();
+
+    let local_db = env.path("startup-local.sqlite3");
+    let serving = NodeProcess::start_with_args([
+        "serve".to_string(),
+        "--bind".to_string(),
+        format!("127.0.0.1:{}", free_port()),
+        "--db".to_string(),
+        local_db.to_str().unwrap().to_string(),
+        "--key".to_string(),
+        env.path("startup-local-key.json")
+            .to_str()
+            .unwrap()
+            .to_string(),
+        "--config".to_string(),
+        config_path.to_str().unwrap().to_string(),
+        "--sync-on-start".to_string(),
+        "--sync-limit".to_string(),
+        "1".to_string(),
+    ]);
+
+    let store = SqliteEventStore::open(local_db.to_str().unwrap()).unwrap();
+    let events = store
+        .query(&EventFilter {
+            subject: Some(signer.public_key()),
+            ..EventFilter::default()
+        })
+        .unwrap();
+
+    assert_eq!(events.len(), 2);
+    assert!(events.iter().any(|event| event.id == identity.id));
+    assert!(events.iter().any(|event| event.id == claim.id));
+    drop(serving);
+}
+
+#[test]
+fn node_serve_sync_on_start_requires_configured_peers() {
+    let env = SyncEnv::new();
+    AssertCommand::cargo_bin("tip-node")
+        .unwrap()
+        .args([
+            "serve",
+            "--bind",
+            &format!("127.0.0.1:{}", free_port()),
+            "--db",
+            env.path("missing-config.sqlite3").to_str().unwrap(),
+            "--key",
+            env.path("missing-config-key.json").to_str().unwrap(),
+            "--sync-on-start",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "--sync-on-start requires --config",
+        ));
+}
+
 fn submit_events(peer: &NodeProcess, events: &[tip_core::SignedEvent]) {
     let response: Value = reqwest::blocking::Client::new()
         .post(format!("{}/events/batch", peer.base_url))
@@ -167,17 +241,26 @@ impl NodeProcess {
     fn start(db_path: PathBuf, key_path: PathBuf) -> Self {
         let port = free_port();
         let bind = format!("127.0.0.1:{port}");
+        Self::start_with_args([
+            "serve".to_string(),
+            "--bind".to_string(),
+            bind,
+            "--db".to_string(),
+            db_path.to_str().unwrap().to_string(),
+            "--key".to_string(),
+            key_path.to_str().unwrap().to_string(),
+        ])
+    }
+
+    fn start_with_args(args: impl IntoIterator<Item = String>) -> Self {
+        let args = args.into_iter().collect::<Vec<_>>();
+        let bind = args
+            .windows(2)
+            .find_map(|window| (window[0] == "--bind").then(|| window[1].clone()))
+            .expect("--bind arg is required");
         let base_url = format!("http://{bind}");
         let child = ProcessCommand::new(tip_node_binary())
-            .args([
-                "serve",
-                "--bind",
-                &bind,
-                "--db",
-                db_path.to_str().unwrap(),
-                "--key",
-                key_path.to_str().unwrap(),
-            ])
+            .args(args)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
