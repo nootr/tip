@@ -132,6 +132,12 @@ struct QueryCommand {
     issuer: Option<String>,
     #[arg(long = "type")]
     kind: Option<String>,
+    #[arg(long)]
+    after_created_at: Option<i64>,
+    #[arg(long)]
+    after_id: Option<String>,
+    #[arg(long)]
+    limit: Option<usize>,
     #[arg(long, default_value = "http://127.0.0.1:8080")]
     node: String,
 }
@@ -238,6 +244,15 @@ fn main() -> anyhow::Result<()> {
             }
             if let Some(kind) = args.kind {
                 query.push(("type", kind));
+            }
+            if let Some(after_created_at) = args.after_created_at {
+                query.push(("after_created_at", after_created_at.to_string()));
+            }
+            if let Some(after_id) = args.after_id {
+                query.push(("after_id", after_id));
+            }
+            if let Some(limit) = args.limit {
+                query.push(("limit", limit.to_string()));
             }
             if !query.is_empty() {
                 let encoded = query

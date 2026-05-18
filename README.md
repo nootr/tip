@@ -30,7 +30,7 @@ cargo run -p tip-cli -- identity create --out identity.json
 cargo run -p tip-node
 cargo run -p tip-cli -- event submit identity.json --node http://127.0.0.1:8080
 cargo run -p tip-cli -- event submit-batch identity.json claim.json --node http://127.0.0.1:8080
-cargo run -p tip-cli -- query --subject <public-key> --node http://127.0.0.1:8080
+cargo run -p tip-cli -- query --subject <public-key> --limit 100 --node http://127.0.0.1:8080
 ```
 
 Optional developer shortcuts use [`just`](https://github.com/casey/just):

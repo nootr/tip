@@ -86,6 +86,36 @@ fn cli_can_submit_batch_to_and_query_from_node() {
         .iter()
         .any(|event| event["type"] == "identity.created"));
     assert!(events.iter().any(|event| event["type"] == "claim.added"));
+
+    let first_page = env.run_json(&[
+        "query",
+        "--subject",
+        public_key,
+        "--limit",
+        "1",
+        "--node",
+        &base_url,
+    ]);
+    let first_page = first_page.as_array().unwrap();
+    assert_eq!(first_page.len(), 1);
+
+    let cursor = &first_page[0];
+    let second_page = env.run_json(&[
+        "query",
+        "--subject",
+        public_key,
+        "--after-created-at",
+        &cursor["created_at"].as_i64().unwrap().to_string(),
+        "--after-id",
+        cursor["id"].as_str().unwrap(),
+        "--limit",
+        "10",
+        "--node",
+        &base_url,
+    ]);
+    let second_page = second_page.as_array().unwrap();
+    assert_eq!(second_page.len(), 1);
+    assert_ne!(second_page[0]["id"], cursor["id"]);
 }
 
 struct E2eEnv {
