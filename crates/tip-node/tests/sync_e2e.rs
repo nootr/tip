@@ -2,7 +2,7 @@ use assert_cmd::Command as AssertCommand;
 use serde_json::{json, Value};
 use std::{
     net::TcpListener,
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{Child, Command as ProcessCommand, Stdio},
     thread,
     time::Duration,
@@ -259,7 +259,7 @@ impl NodeProcess {
             .find_map(|window| (window[0] == "--bind").then(|| window[1].clone()))
             .expect("--bind arg is required");
         let base_url = format!("http://{bind}");
-        let child = ProcessCommand::new(tip_node_binary())
+        let child = ProcessCommand::new(assert_cmd::cargo::cargo_bin("tip-node"))
             .args(args)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -296,35 +296,6 @@ impl Drop for NodeProcess {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
-}
-
-fn tip_node_binary() -> PathBuf {
-    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap();
-
-    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-    let status = ProcessCommand::new(cargo)
-        .args(["build", "-p", "tip-node"])
-        .current_dir(workspace_root)
-        .status()
-        .unwrap();
-    assert!(status.success());
-
-    let target_dir = std::env::var_os("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| workspace_root.join("target"));
-    let target_dir = if target_dir.is_absolute() {
-        target_dir
-    } else {
-        workspace_root.join(target_dir)
-    };
-
-    target_dir
-        .join("debug")
-        .join(format!("tip-node{}", std::env::consts::EXE_SUFFIX))
 }
 
 fn free_port() -> u16 {
