@@ -1,0 +1,30 @@
+[workspace]
+members = [
+    "crates/tip-core",
+    "crates/tip-node",
+    "crates/tip-cli",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/nootr/tip"
+rust-version = "1.78"
+
+[workspace.dependencies]
+anyhow = "1"
+base64 = "0.22"
+clap = { version = "4", features = ["derive"] }
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+hex = "0.4"
+rand_core = { version = "0.6", features = ["getrandom"] }
+reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], default-features = false }
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_json_canonicalizer = "0.3"
+sha2 = "0.10"
+thiserror = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+axum = "0.7"

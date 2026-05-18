@@ -1,0 +1,9 @@
+/target
+*.sqlite3
+*.db
+tip-node-key.json
+.DS_Store
+.env
+identity.json
+claim.json
+attestation.json

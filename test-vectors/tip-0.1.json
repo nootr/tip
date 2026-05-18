@@ -1,0 +1,72 @@
+{
+  "description": "TIP 0.1 deterministic Ed25519/JCS test vectors",
+  "events": {
+    "attestation_issued": {
+      "created_at": 1700000000,
+      "id": "sha256:8aa2372b36bed66c8f7c6e8828f73871759751f1d6006e56f1ab21a04f5d2a19",
+      "issuer": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+      "payload": {
+        "claim": "trusted_contributor",
+        "message": "Useful open-source contributor"
+      },
+      "signature": "8hiS3ZWR8eoazcD0JC7n1EoueEs_WT3x0McaxMS7WoMX_-SUmJBvj0hwNl1mcDT49lZKfLkJwp5FA3pMdMqBCg",
+      "subject": "gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "type": "attestation.issued",
+      "version": "tip/0.1"
+    },
+    "attestation_revoked": {
+      "created_at": 1700000000,
+      "id": "sha256:ee6d23dd011979e5975ea134c718c8bd3aa88925025ff25cef4d8cdb34368c0d",
+      "issuer": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+      "payload": {
+        "attestation_id": "sha256:8aa2372b36bed66c8f7c6e8828f73871759751f1d6006e56f1ab21a04f5d2a19"
+      },
+      "signature": "JHeMNGRLcUyhjFfT22st4sEi4piab-Lnfm6mwOKsU3IHMVsLw8gbRjx2msK4rfX2c3YyZ6leKSo6UEO03ubiBg",
+      "subject": "gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "type": "attestation.revoked",
+      "version": "tip/0.1"
+    },
+    "claim_added": {
+      "created_at": 1700000000,
+      "id": "sha256:67fc8a34728b4d28047f9602fb19c0573e0c1337f7e6356d1eada7671350b638",
+      "issuer": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+      "payload": {
+        "claim_type": "github",
+        "proof": {
+          "url": "https://gist.github.com/joris/tip-proof"
+        },
+        "value": "joris"
+      },
+      "signature": "_tO1CZf39eSjy-I8u-iBt1oUe2wDafnM-uqUznDAQD2DUeyzbPYIiAkcwYhQc1qZd2V7WzuUUGqB-F2JqCf3Dw",
+      "subject": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+      "type": "claim.added",
+      "version": "tip/0.1"
+    },
+    "claim_revoked": {
+      "created_at": 1700000000,
+      "id": "sha256:3c4d415ed5e6b7b9faea146eff09c56d3cd4d695112c0bfacdcb554116bb1ecf",
+      "issuer": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+      "payload": {
+        "claim_id": "sha256:67fc8a34728b4d28047f9602fb19c0573e0c1337f7e6356d1eada7671350b638"
+      },
+      "signature": "dEyTj9mbJ37NQuMpW6IHjqLI1b3R5Su54y9aQ67x84ivEb-DsZ70eGw6wTdE_lq5bZ5hnBSFVu7D9Pfou3JsCQ",
+      "subject": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+      "type": "claim.revoked",
+      "version": "tip/0.1"
+    },
+    "identity_created": {
+      "created_at": 1700000000,
+      "id": "sha256:44008dc711e91679e9d5ce3d2ea8982e5a01cf0d6d222c4bc3ef609c90341c27",
+      "issuer": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+      "payload": {},
+      "signature": "keTmuGqr-46t81bRW0oBeWPj1nhJMpQRkAKRJx8A0FStIYNtO4nZfgwSE8xmHTQsqMfqDKhFxISbpO9TqMnCCw",
+      "subject": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+      "type": "identity.created",
+      "version": "tip/0.1"
+    }
+  },
+  "issuer_public_key": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+  "issuer_seed": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+  "subject_public_key": "gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+  "subject_seed": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI"
+}

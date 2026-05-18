@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TIP — Trust Infrastructure Protocol</title>
+  <meta name="description" content="Portable cryptographic trust evidence for the internet.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="hero">
+    <nav>
+      <strong>TIP</strong>
+      <a href="https://github.com/nootr/tip">GitHub</a>
+      <a href="https://github.com/nootr/tip/blob/main/SPEC.md">Spec</a>
+    </nav>
+    <section>
+      <p class="eyebrow">Trust Infrastructure Protocol</p>
+      <h1>Portable trust, not another login.</h1>
+      <p class="lead">TIP is an open protocol for signed claims and attestations that can travel between apps, communities, platforms, and AI agents.</p>
+      <div class="actions">
+        <a class="button primary" href="https://github.com/nootr/tip">View on GitHub</a>
+        <a class="button" href="https://github.com/nootr/tip/blob/main/SPEC.md">Read the draft spec</a>
+      </div>
+    </section>
+  </header>
+
+  <main>
+    <section class="grid">
+      <article>
+        <h2>Cryptographic identities</h2>
+        <p>TIP identities are Ed25519 public keys. Handles like GitHub usernames or domains are verifiable claims, not the root identity.</p>
+      </article>
+      <article>
+        <h2>Signed events</h2>
+        <p>Claims, attestations, updates, and revocations are append-only signed events. Nodes store evidence; clients verify it.</p>
+      </article>
+      <article>
+        <h2>Local trust policies</h2>
+        <p>There is no global reputation score. Each app decides which issuers and signals matter for its own context.</p>
+      </article>
+    </section>
+
+    <section class="example">
+      <h2>Developer trust demo</h2>
+      <pre><code>tip key generate
+
+tip identity create --out identity.json
+
+tip claim add github joris \
+  --proof-url https://gist.github.com/... \
+  --out github-claim.json
+
+tip claim revoke &lt;claim-event-id&gt;
+
+tip attest issue &lt;subject-pubkey&gt; trusted_contributor \
+  --message "Useful open-source contributor"
+
+tip attest revoke &lt;subject-pubkey&gt; &lt;attestation-event-id&gt;</code></pre>
+    </section>
+
+    <section>
+      <h2>Roadmap</h2>
+      <ol>
+        <li>TIP 0.1 spec, Rust core, CLI, and SQLite-backed node.</li>
+        <li>Peer sync between explicitly configured nodes.</li>
+        <li>SDKs for Python, Rust, and other ecosystems.</li>
+      </ol>
+    </section>
+  </main>
+</body>
+</html>
