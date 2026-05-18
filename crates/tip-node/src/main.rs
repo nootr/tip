@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{bail, Context};
 use clap::{Parser, Subcommand};
 use serde_json::json;
 use std::{
@@ -12,6 +12,7 @@ use tip_node::{
         http_peer_event_client::HttpPeerEventClient, node_key_file,
         sqlite_event_store::SqliteEventStore,
     },
+    config::NodeConfig,
     http::{router, AppState},
 };
 
@@ -45,7 +46,9 @@ struct ServeCommand {
 #[derive(Parser)]
 struct SyncCommand {
     #[arg(long)]
-    peer: String,
+    peer: Vec<String>,
+    #[arg(long)]
+    config: Option<String>,
     #[arg(long, env = "TIP_NODE_DB", default_value = "tip-node.sqlite3")]
     db: String,
     #[arg(long, default_value_t = 500)]
@@ -79,18 +82,64 @@ async fn serve(command: ServeCommand) -> anyhow::Result<()> {
 }
 
 fn sync(command: SyncCommand) -> anyhow::Result<()> {
-    let peer = HttpPeerEventClient::new(command.peer);
+    let peer_urls = sync_peer_urls(&command)?;
     let store = SqliteEventStore::open(&command.db).context("open SQLite event store")?;
-    let summary = use_cases::sync_from_peer(&peer, &store, &Ed25519Verifier, command.limit)?;
+    let mut peer_summaries = Vec::with_capacity(peer_urls.len());
+    let mut total_pulled = 0usize;
+    let mut total_accepted = 0usize;
+    let mut total_rejected = 0usize;
 
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&json!({
+    for peer_url in peer_urls {
+        let peer = HttpPeerEventClient::new(&peer_url);
+        let summary = use_cases::sync_from_peer(&peer, &store, &Ed25519Verifier, command.limit)
+            .with_context(|| format!("sync from peer {}", peer_url))?;
+        total_pulled += summary.pulled;
+        total_accepted += summary.accepted;
+        total_rejected += summary.rejected;
+        peer_summaries.push(json!({
+            "peer": peer_url,
             "pulled": summary.pulled,
             "accepted": summary.accepted,
             "rejected": summary.rejected,
-        }))?
-    );
+        }));
+    }
+
+    let output = if peer_summaries.len() == 1 && command.config.is_none() && command.peer.len() == 1
+    {
+        json!({
+            "pulled": total_pulled,
+            "accepted": total_accepted,
+            "rejected": total_rejected,
+        })
+    } else {
+        json!({
+            "pulled": total_pulled,
+            "accepted": total_accepted,
+            "rejected": total_rejected,
+            "peers": peer_summaries,
+        })
+    };
+
+    println!("{}", serde_json::to_string_pretty(&output)?);
 
     Ok(())
+}
+
+fn sync_peer_urls(command: &SyncCommand) -> anyhow::Result<Vec<String>> {
+    let mut peers = command.peer.clone();
+
+    if let Some(config_path) = &command.config {
+        let config = NodeConfig::load(config_path)
+            .with_context(|| format!("load config {}", config_path))?;
+        peers.extend(config.peers.urls);
+    }
+
+    peers.sort();
+    peers.dedup();
+
+    if peers.is_empty() {
+        bail!("sync requires at least one --peer or --config with [peers].urls");
+    }
+
+    Ok(peers)
 }

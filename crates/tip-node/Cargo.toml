@@ -16,6 +16,7 @@ serde.workspace = true
 serde_json.workspace = true
 tip-core = { path = "../tip-core" }
 tokio.workspace = true
+toml.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true
