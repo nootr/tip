@@ -40,18 +40,18 @@ enum Command {
 
 #[derive(Parser)]
 struct ServeCommand {
-    #[arg(long, env = "TIP_NODE_BIND", default_value = "127.0.0.1:8080")]
-    bind: String,
-    #[arg(long, env = "TIP_NODE_DB", default_value = "tip-node.sqlite3")]
-    db: String,
-    #[arg(long, env = "TIP_NODE_KEY", default_value = "tip-node-key.json")]
-    key: String,
+    #[arg(long, env = "TIP_NODE_BIND")]
+    bind: Option<String>,
+    #[arg(long, env = "TIP_NODE_DB")]
+    db: Option<String>,
+    #[arg(long, env = "TIP_NODE_KEY")]
+    key: Option<String>,
     #[arg(long)]
     config: Option<String>,
     #[arg(long)]
     sync_on_start: bool,
-    #[arg(long, default_value_t = 500)]
-    sync_limit: usize,
+    #[arg(long)]
+    sync_limit: Option<usize>,
     #[arg(long)]
     sync_from_beginning: bool,
 }
@@ -62,10 +62,10 @@ struct SyncCommand {
     peer: Vec<String>,
     #[arg(long)]
     config: Option<String>,
-    #[arg(long, env = "TIP_NODE_DB", default_value = "tip-node.sqlite3")]
-    db: String,
-    #[arg(long, default_value_t = 500)]
-    limit: usize,
+    #[arg(long, env = "TIP_NODE_DB")]
+    db: Option<String>,
+    #[arg(long)]
+    limit: Option<usize>,
     #[arg(long)]
     from_beginning: bool,
 }
@@ -84,18 +84,21 @@ fn run_server(command: ServeCommand) -> anyhow::Result<()> {
 }
 
 async fn serve(command: ServeCommand) -> anyhow::Result<()> {
-    let node_key =
-        node_key_file::load_or_generate(&command.key).context("load node identity key")?;
-    let store = SqliteEventStore::open(&command.db).context("open SQLite event store")?;
+    let config = load_optional_config(command.config.as_deref())?;
+    let resolved = resolve_serve_config(&command, config.as_ref());
 
-    if command.sync_on_start {
-        let peer_urls = config_peer_urls(command.config.as_deref())?;
+    let node_key =
+        node_key_file::load_or_generate(&resolved.key).context("load node identity key")?;
+    let store = SqliteEventStore::open(&resolved.db).context("open SQLite event store")?;
+
+    if resolved.sync_on_start {
+        let peer_urls = config_peer_urls(config.as_ref())?;
         let summary = tokio::task::block_in_place(|| {
             sync_peers(
                 &peer_urls,
                 &store,
-                command.sync_limit,
-                command.sync_from_beginning,
+                resolved.sync_limit,
+                resolved.sync_from_beginning,
             )
         })?;
         eprintln!(
@@ -106,7 +109,7 @@ async fn serve(command: ServeCommand) -> anyhow::Result<()> {
 
     let state = AppState::new(node_key, Arc::new(Mutex::new(store)));
 
-    let addr: SocketAddr = command.bind.parse().context("parse bind address")?;
+    let addr: SocketAddr = resolved.bind.parse().context("parse bind address")?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
     eprintln!("TIP node listening on http://{}", addr);
     axum::serve(listener, router(state)).await?;
@@ -114,9 +117,25 @@ async fn serve(command: ServeCommand) -> anyhow::Result<()> {
 }
 
 fn sync(command: SyncCommand) -> anyhow::Result<()> {
-    let peer_urls = sync_peer_urls(&command)?;
-    let store = SqliteEventStore::open(&command.db).context("open SQLite event store")?;
-    let summary = sync_peers(&peer_urls, &store, command.limit, command.from_beginning)?;
+    let config = load_optional_config(command.config.as_deref())?;
+    let peer_urls = sync_peer_urls(&command, config.as_ref())?;
+    let db = command
+        .db
+        .clone()
+        .or_else(|| config.as_ref().and_then(|config| config.node.db.clone()))
+        .unwrap_or_else(|| "tip-node.sqlite3".to_string());
+    let limit = command
+        .limit
+        .or_else(|| config.as_ref().and_then(|config| config.sync.limit))
+        .unwrap_or(500);
+    let from_beginning = command.from_beginning
+        || config
+            .as_ref()
+            .and_then(|config| config.sync.from_beginning)
+            .unwrap_or(false);
+
+    let store = SqliteEventStore::open(&db).context("open SQLite event store")?;
+    let summary = sync_peers(&peer_urls, &store, limit, from_beginning)?;
 
     let output = if peer_urls.len() == 1 && command.config.is_none() && command.peer.len() == 1 {
         json!({
@@ -144,6 +163,54 @@ struct MultiPeerSyncSummary {
     accepted: usize,
     rejected: usize,
     peers: Vec<serde_json::Value>,
+}
+
+struct ResolvedServeConfig {
+    bind: String,
+    db: String,
+    key: String,
+    sync_on_start: bool,
+    sync_limit: usize,
+    sync_from_beginning: bool,
+}
+
+fn load_optional_config(path: Option<&str>) -> anyhow::Result<Option<NodeConfig>> {
+    path.map(NodeConfig::load).transpose()
+}
+
+fn resolve_serve_config(
+    command: &ServeCommand,
+    config: Option<&NodeConfig>,
+) -> ResolvedServeConfig {
+    ResolvedServeConfig {
+        bind: command
+            .bind
+            .clone()
+            .or_else(|| config.and_then(|config| config.node.bind.clone()))
+            .unwrap_or_else(|| "127.0.0.1:8080".to_string()),
+        db: command
+            .db
+            .clone()
+            .or_else(|| config.and_then(|config| config.node.db.clone()))
+            .unwrap_or_else(|| "tip-node.sqlite3".to_string()),
+        key: command
+            .key
+            .clone()
+            .or_else(|| config.and_then(|config| config.node.key.clone()))
+            .unwrap_or_else(|| "tip-node-key.json".to_string()),
+        sync_on_start: command.sync_on_start
+            || config
+                .and_then(|config| config.sync.on_start)
+                .unwrap_or(false),
+        sync_limit: command
+            .sync_limit
+            .or_else(|| config.and_then(|config| config.sync.limit))
+            .unwrap_or(500),
+        sync_from_beginning: command.sync_from_beginning
+            || config
+                .and_then(|config| config.sync.from_beginning)
+                .unwrap_or(false),
+    }
 }
 
 struct SystemClock;
@@ -202,11 +269,14 @@ fn sync_peers(
     })
 }
 
-fn sync_peer_urls(command: &SyncCommand) -> anyhow::Result<Vec<String>> {
+fn sync_peer_urls(
+    command: &SyncCommand,
+    config: Option<&NodeConfig>,
+) -> anyhow::Result<Vec<String>> {
     let mut peers = command.peer.clone();
 
-    if let Some(config_path) = &command.config {
-        peers.extend(load_config_peer_urls(config_path)?);
+    if let Some(config) = config {
+        peers.extend(config.peers.urls.clone());
     }
 
     normalize_peer_urls(
@@ -215,19 +285,14 @@ fn sync_peer_urls(command: &SyncCommand) -> anyhow::Result<Vec<String>> {
     )
 }
 
-fn config_peer_urls(config_path: Option<&str>) -> anyhow::Result<Vec<String>> {
-    let config_path = config_path
-        .ok_or_else(|| anyhow::anyhow!("--sync-on-start requires --config with [peers].urls"))?;
-    normalize_peer_urls(
-        load_config_peer_urls(config_path)?,
-        "--sync-on-start requires --config with [peers].urls",
-    )
-}
+fn config_peer_urls(config: Option<&NodeConfig>) -> anyhow::Result<Vec<String>> {
+    let peers = config
+        .ok_or_else(|| anyhow::anyhow!("startup sync requires configured [peers].urls"))?
+        .peers
+        .urls
+        .clone();
 
-fn load_config_peer_urls(config_path: &str) -> anyhow::Result<Vec<String>> {
-    let config =
-        NodeConfig::load(config_path).with_context(|| format!("load config {}", config_path))?;
-    Ok(config.peers.urls)
+    normalize_peer_urls(peers, "startup sync requires configured [peers].urls")
 }
 
 fn normalize_peer_urls(mut peers: Vec<String>, empty_message: &str) -> anyhow::Result<Vec<String>> {

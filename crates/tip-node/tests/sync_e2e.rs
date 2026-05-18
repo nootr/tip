@@ -97,24 +97,24 @@ fn node_sync_pulls_events_from_configured_peers() {
     submit_events(&peer_b, &[identity_b.clone(), claim_b.clone()]);
 
     let config_path = env.path("tip-node.toml");
+    let local_db = env.path("local-config.sqlite3");
     std::fs::write(
         &config_path,
         format!(
-            "[peers]\nurls = [\n  \"{}\",\n  \"{}\"\n]\n",
-            peer_a.base_url, peer_b.base_url
+            "[node]\ndb = \"{}\"\n\n[peers]\nurls = [\n  \"{}\",\n  \"{}\"\n]\n",
+            local_db.display(),
+            peer_a.base_url,
+            peer_b.base_url
         ),
     )
     .unwrap();
 
-    let local_db = env.path("local-config.sqlite3");
     let output = AssertCommand::cargo_bin("tip-node")
         .unwrap()
         .args([
             "sync",
             "--config",
             config_path.to_str().unwrap(),
-            "--db",
-            local_db.to_str().unwrap(),
             "--limit",
             "1",
         ])
@@ -152,30 +152,28 @@ fn node_serve_syncs_configured_peers_on_start_when_enabled() {
     submit_events(&peer, &[identity.clone(), claim.clone()]);
 
     let config_path = env.path("startup-tip-node.toml");
+    let local_db = env.path("startup-local.sqlite3");
+    let bind = format!("127.0.0.1:{}", free_port());
     std::fs::write(
         &config_path,
-        format!("[peers]\nurls = [\"{}\"]\n", peer.base_url),
+        format!(
+            "[node]\nbind = \"{}\"\ndb = \"{}\"\nkey = \"{}\"\n\n[sync]\non_start = true\nlimit = 1\n\n[peers]\nurls = [\"{}\"]\n",
+            bind,
+            local_db.display(),
+            env.path("startup-local-key.json").display(),
+            peer.base_url
+        ),
     )
     .unwrap();
 
-    let local_db = env.path("startup-local.sqlite3");
-    let serving = NodeProcess::start_with_args([
-        "serve".to_string(),
-        "--bind".to_string(),
-        format!("127.0.0.1:{}", free_port()),
-        "--db".to_string(),
-        local_db.to_str().unwrap().to_string(),
-        "--key".to_string(),
-        env.path("startup-local-key.json")
-            .to_str()
-            .unwrap()
-            .to_string(),
-        "--config".to_string(),
-        config_path.to_str().unwrap().to_string(),
-        "--sync-on-start".to_string(),
-        "--sync-limit".to_string(),
-        "1".to_string(),
-    ]);
+    let serving = NodeProcess::start_with_args_and_base_url(
+        [
+            "serve".to_string(),
+            "--config".to_string(),
+            config_path.to_str().unwrap().to_string(),
+        ],
+        format!("http://{}", bind),
+    );
 
     let store = SqliteEventStore::open(local_db.to_str().unwrap()).unwrap();
     let events = store
@@ -209,7 +207,7 @@ fn node_serve_sync_on_start_requires_configured_peers() {
         .assert()
         .failure()
         .stderr(predicates::str::contains(
-            "--sync-on-start requires --config",
+            "startup sync requires configured [peers].urls",
         ));
 }
 
@@ -289,7 +287,13 @@ impl NodeProcess {
             .windows(2)
             .find_map(|window| (window[0] == "--bind").then(|| window[1].clone()))
             .expect("--bind arg is required");
-        let base_url = format!("http://{bind}");
+        Self::start_with_args_and_base_url(args, format!("http://{bind}"))
+    }
+
+    fn start_with_args_and_base_url(
+        args: impl IntoIterator<Item = String>,
+        base_url: String,
+    ) -> Self {
         let child = ProcessCommand::new(assert_cmd::cargo::cargo_bin("tip-node"))
             .args(args)
             .stdout(Stdio::null())

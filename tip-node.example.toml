@@ -1,3 +1,13 @@
+[node]
+bind = "127.0.0.1:8080"
+db = "tip-node.sqlite3"
+key = "tip-node-key.json"
+
+[sync]
+on_start = false
+limit = 500
+from_beginning = false
+
 [peers]
 urls = [
   "http://127.0.0.1:8081",

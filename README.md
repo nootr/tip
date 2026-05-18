@@ -38,7 +38,7 @@ Released binaries are published on GitHub Releases for Linux x86_64 and macOS ar
 cargo test
 cargo run -p tip-cli -- key generate --name default
 cargo run -p tip-cli -- identity create --out identity.json
-cargo run -p tip-node -- serve --config tip-node.example.toml --sync-on-start
+cargo run -p tip-node -- serve --config tip-node.example.toml
 cargo run -p tip-node -- sync --peer http://127.0.0.1:8081 --db tip-node.sqlite3
 cargo run -p tip-node -- sync --peer http://127.0.0.1:8081 --db tip-node.sqlite3 --from-beginning
 cargo run -p tip-node -- sync --config tip-node.example.toml --db tip-node.sqlite3
