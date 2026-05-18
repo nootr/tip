@@ -21,6 +21,17 @@ Rust code follows hexagonal architecture:
 - SQLite, HTTP, and filesystem key storage are adapters
 - tests target core behavior without requiring a running node
 
+## Installation
+
+From source:
+
+```bash
+cargo install --path crates/tip-cli
+cargo install --path crates/tip-node
+```
+
+Released binaries are published on GitHub Releases for Linux x86_64 and macOS arm64/x86_64.
+
 ## Quick start
 
 ```bash
