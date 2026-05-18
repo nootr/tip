@@ -17,3 +17,7 @@ reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tip-core = { path = "../tip-core" }
+
+[dev-dependencies]
+assert_cmd.workspace = true
+tempfile.workspace = true
