@@ -41,6 +41,8 @@ pub struct SyncConfig {
     pub on_start: Option<bool>,
     pub limit: Option<usize>,
     pub from_beginning: Option<bool>,
+    pub periodic_seconds: Option<u64>,
+    pub full_resync_seconds: Option<u64>,
 }
 
 impl Default for SyncConfig {
@@ -49,6 +51,8 @@ impl Default for SyncConfig {
             on_start: Some(false),
             limit: Some(500),
             from_beginning: Some(false),
+            periodic_seconds: None,
+            full_resync_seconds: None,
         }
     }
 }

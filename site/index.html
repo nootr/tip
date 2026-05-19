@@ -108,7 +108,7 @@
       <div class="section-heading">
         <p class="eyebrow">Reference node</p>
         <h2>Run a small HTTP node with peer sync.</h2>
-        <p>The Rust node stores events in SQLite, exposes a compact HTTP API, and can pull from explicitly configured peers. Run one as a community registry, public evidence mirror, or local trust-policy cache.</p>
+        <p>The Rust node stores events in SQLite, exposes a compact HTTP API, and can periodically pull from explicitly configured peers. Run one as a community registry, public evidence mirror, or local trust-policy cache.</p>
       </div>
       <div class="node-grid">
         <article class="panel">
@@ -125,6 +125,8 @@ contact = "mailto:admin@example.com"
 [sync]
 on_start = true
 limit = 500
+periodic_seconds = 300
+full_resync_seconds = 86400
 
 [peers]
 urls = ["http://127.0.0.1:8081"]</code></pre>

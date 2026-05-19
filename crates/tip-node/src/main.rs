@@ -4,7 +4,7 @@ use serde_json::json;
 use std::{
     net::SocketAddr,
     sync::{Arc, Mutex},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tip_core::{
     crypto::Ed25519Verifier,
@@ -54,6 +54,10 @@ struct ServeCommand {
     sync_limit: Option<usize>,
     #[arg(long)]
     sync_from_beginning: bool,
+    #[arg(long)]
+    sync_periodic_seconds: Option<u64>,
+    #[arg(long)]
+    sync_full_resync_seconds: Option<u64>,
 }
 
 #[derive(Parser)]
@@ -85,17 +89,24 @@ fn run_server(command: ServeCommand) -> anyhow::Result<()> {
 
 async fn serve(command: ServeCommand) -> anyhow::Result<()> {
     let config = load_optional_config(command.config.as_deref())?;
-    let resolved = resolve_serve_config(&command, config.as_ref());
+    let resolved = resolve_serve_config(&command, config.as_ref())?;
+    let peer_urls = if resolved.sync_on_start || resolved.sync_periodic_seconds.is_some() {
+        Some(config_peer_urls(
+            config.as_ref(),
+            "configured sync requires [peers].urls",
+        )?)
+    } else {
+        None
+    };
 
     let node_key =
         node_key_file::load_or_generate(&resolved.key).context("load node identity key")?;
     let store = SqliteEventStore::open(&resolved.db).context("open SQLite event store")?;
 
     if resolved.sync_on_start {
-        let peer_urls = config_peer_urls(config.as_ref())?;
         let summary = tokio::task::block_in_place(|| {
             sync_peers(
-                &peer_urls,
+                peer_urls.as_ref().expect("peer URLs are loaded"),
                 &store,
                 resolved.sync_limit,
                 resolved.sync_from_beginning,
@@ -107,11 +118,22 @@ async fn serve(command: ServeCommand) -> anyhow::Result<()> {
         );
     }
 
+    let store = Arc::new(Mutex::new(store));
+    if let Some(periodic_seconds) = resolved.sync_periodic_seconds {
+        spawn_periodic_sync(
+            peer_urls.expect("peer URLs are loaded"),
+            Arc::clone(&store),
+            resolved.sync_limit,
+            periodic_seconds,
+            resolved.sync_full_resync_seconds,
+        );
+    }
+
     let metadata = config
         .as_ref()
         .map(|config| config.node.metadata())
         .unwrap_or_default();
-    let state = AppState::new_with_metadata(node_key, Arc::new(Mutex::new(store)), metadata);
+    let state = AppState::new_with_metadata(node_key, store, metadata);
 
     let addr: SocketAddr = resolved.bind.parse().context("parse bind address")?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -176,6 +198,8 @@ struct ResolvedServeConfig {
     sync_on_start: bool,
     sync_limit: usize,
     sync_from_beginning: bool,
+    sync_periodic_seconds: Option<u64>,
+    sync_full_resync_seconds: Option<u64>,
 }
 
 fn load_optional_config(path: Option<&str>) -> anyhow::Result<Option<NodeConfig>> {
@@ -185,8 +209,25 @@ fn load_optional_config(path: Option<&str>) -> anyhow::Result<Option<NodeConfig>
 fn resolve_serve_config(
     command: &ServeCommand,
     config: Option<&NodeConfig>,
-) -> ResolvedServeConfig {
-    ResolvedServeConfig {
+) -> anyhow::Result<ResolvedServeConfig> {
+    let sync_periodic_seconds = command
+        .sync_periodic_seconds
+        .or_else(|| config.and_then(|config| config.sync.periodic_seconds));
+    let sync_full_resync_seconds = command
+        .sync_full_resync_seconds
+        .or_else(|| config.and_then(|config| config.sync.full_resync_seconds));
+
+    if matches!(sync_periodic_seconds, Some(0)) {
+        bail!("sync_periodic_seconds must be greater than zero");
+    }
+    if matches!(sync_full_resync_seconds, Some(0)) {
+        bail!("sync_full_resync_seconds must be greater than zero");
+    }
+    if sync_full_resync_seconds.is_some() && sync_periodic_seconds.is_none() {
+        bail!("sync_full_resync_seconds requires sync_periodic_seconds");
+    }
+
+    Ok(ResolvedServeConfig {
         bind: command
             .bind
             .clone()
@@ -214,7 +255,9 @@ fn resolve_serve_config(
             || config
                 .and_then(|config| config.sync.from_beginning)
                 .unwrap_or(false),
-    }
+        sync_periodic_seconds,
+        sync_full_resync_seconds,
+    })
 }
 
 struct SystemClock;
@@ -226,6 +269,55 @@ impl Clock for SystemClock {
             .unwrap_or_default()
             .as_secs() as i64
     }
+}
+
+fn spawn_periodic_sync(
+    peer_urls: Vec<String>,
+    store: Arc<Mutex<SqliteEventStore>>,
+    limit: usize,
+    periodic_seconds: u64,
+    full_resync_seconds: Option<u64>,
+) {
+    tokio::spawn(async move {
+        let periodic = Duration::from_secs(periodic_seconds);
+        let full_resync = full_resync_seconds.map(Duration::from_secs);
+        let mut last_full_resync = SystemTime::now();
+
+        loop {
+            tokio::time::sleep(periodic).await;
+
+            let from_beginning = full_resync
+                .and_then(|interval| {
+                    SystemTime::now()
+                        .duration_since(last_full_resync)
+                        .ok()
+                        .map(|elapsed| elapsed >= interval)
+                })
+                .unwrap_or(false);
+            if from_beginning {
+                last_full_resync = SystemTime::now();
+            }
+
+            let peer_urls = peer_urls.clone();
+            let store = Arc::clone(&store);
+            let result = tokio::task::spawn_blocking(move || {
+                let store = store
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("store lock poisoned"))?;
+                sync_peers(&peer_urls, &store, limit, from_beginning)
+            })
+            .await;
+
+            match result {
+                Ok(Ok(summary)) => eprintln!(
+                    "TIP periodic sync completed: pulled={}, accepted={}, rejected={}, full_resync={}",
+                    summary.pulled, summary.accepted, summary.rejected, from_beginning
+                ),
+                Ok(Err(err)) => eprintln!("TIP periodic sync failed: {err:#}"),
+                Err(err) => eprintln!("TIP periodic sync task failed: {err:#}"),
+            }
+        }
+    });
 }
 
 fn sync_peers(
@@ -289,14 +381,17 @@ fn sync_peer_urls(
     )
 }
 
-fn config_peer_urls(config: Option<&NodeConfig>) -> anyhow::Result<Vec<String>> {
+fn config_peer_urls(
+    config: Option<&NodeConfig>,
+    empty_message: &str,
+) -> anyhow::Result<Vec<String>> {
     let peers = config
-        .ok_or_else(|| anyhow::anyhow!("startup sync requires configured [peers].urls"))?
+        .ok_or_else(|| anyhow::anyhow!(empty_message.to_string()))?
         .peers
         .urls
         .clone();
 
-    normalize_peer_urls(peers, "startup sync requires configured [peers].urls")
+    normalize_peer_urls(peers, empty_message)
 }
 
 fn normalize_peer_urls(mut peers: Vec<String>, empty_message: &str) -> anyhow::Result<Vec<String>> {

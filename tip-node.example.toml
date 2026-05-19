@@ -11,6 +11,10 @@ contact = "mailto:admin@example.com"
 on_start = false
 limit = 500
 from_beginning = false
+# Optional periodic peer sync for long-running nodes.
+# periodic_seconds = 300
+# Optional periodic full resync to catch older events missed by cursor sync.
+# full_resync_seconds = 86400
 
 [peers]
 urls = [

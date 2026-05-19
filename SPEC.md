@@ -329,7 +329,7 @@ TIP 0.1 sync is intentionally simple and implementation-level. The protocol prim
 - incremental reads via `GET /events` cursor pagination
 - idempotent writes via `POST /events` or `POST /events/batch`
 
-The reference node supports explicit peer lists, manual pull sync, opt-in startup sync, and persistent per-peer cursor state. This is not peer discovery, consensus, or a guarantee that all nodes converge globally.
+The reference node supports explicit peer lists, manual pull sync, opt-in startup sync, optional periodic sync, optional periodic full resync, and persistent per-peer cursor state. This is not peer discovery, consensus, or a guarantee that all nodes converge globally.
 
 A node may store, per peer:
 
@@ -345,6 +345,8 @@ A later sync can resume by querying:
 ```text
 GET /events?after_created_at=<last_created_at>&after_id=<last_id>&limit=500
 ```
+
+Because TIP event `created_at` is signer-controlled, cursor sync can miss an older event that a peer receives after the local cursor has advanced. Long-running nodes SHOULD periodically perform a full resync from the beginning against configured peers. Full resync is still not a completeness proof; it is a practical cache-refresh mitigation against stale cursors and late-arriving revocations.
 
 ## Privacy and safety
 

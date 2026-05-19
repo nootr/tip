@@ -24,6 +24,7 @@ This project uses pre-1.0 alpha releases while the protocol and reference implem
 - Community node metadata in config and `/info` responses.
 - Threat model documentation for malicious or incomplete nodes.
 - Batch and peer-sync ingestion retry out-of-order revocations when referenced events arrive later in the same ingestion stream.
+- Optional periodic peer sync and full-resync intervals for long-running nodes.
 
 ## v0.1.0-alpha.2 - 2026-05-19
 

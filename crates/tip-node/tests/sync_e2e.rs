@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
     process::{Child, Command as ProcessCommand, Stdio},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tempfile::TempDir;
 use tip_core::{
@@ -140,6 +140,56 @@ fn node_sync_pulls_events_from_configured_peers() {
 }
 
 #[test]
+fn node_serve_periodic_full_resync_catches_late_older_events() {
+    let env = SyncEnv::new();
+    let peer = NodeProcess::start(
+        env.path("periodic-peer.sqlite3"),
+        env.path("periodic-peer-key.json"),
+    );
+    let signer = Ed25519Keypair::generate();
+    let claim = use_cases::add_claim(&LaterClock, &signer, "github", "periodic", None).unwrap();
+    submit_events(&peer, std::slice::from_ref(&claim));
+
+    let config_path = env.path("periodic-tip-node.toml");
+    let local_db = env.path("periodic-local.sqlite3");
+    let bind = format!("127.0.0.1:{}", free_port());
+    std::fs::write(
+        &config_path,
+        format!(
+            "[node]\nbind = \"{}\"\ndb = \"{}\"\nkey = \"{}\"\n\n[sync]\nlimit = 1\nperiodic_seconds = 1\nfull_resync_seconds = 2\n\n[peers]\nurls = [\"{}\"]\n",
+            bind,
+            local_db.display(),
+            env.path("periodic-local-key.json").display(),
+            peer.base_url
+        ),
+    )
+    .unwrap();
+
+    let serving = NodeProcess::start_with_args_and_base_url(
+        [
+            "serve".to_string(),
+            "--config".to_string(),
+            config_path.to_str().unwrap().to_string(),
+        ],
+        format!("http://{}", bind),
+    );
+
+    wait_for_store(&local_db, |store| store.get(&claim.id).unwrap().is_some());
+
+    let revocation = use_cases::revoke_claim(&FixedClock, &signer, &claim.id).unwrap();
+    submit_events(&peer, std::slice::from_ref(&revocation));
+    let subject = signer.public_key();
+    wait_for_store(&local_db, |store| {
+        store.get(&revocation.id).unwrap().is_some()
+            && use_cases::active_claims(store, &subject)
+                .unwrap()
+                .is_empty()
+    });
+
+    drop(serving);
+}
+
+#[test]
 fn node_serve_syncs_configured_peers_on_start_when_enabled() {
     let env = SyncEnv::new();
     let peer = NodeProcess::start(
@@ -207,7 +257,7 @@ fn node_serve_sync_on_start_requires_configured_peers() {
         .assert()
         .failure()
         .stderr(predicates::str::contains(
-            "startup sync requires configured [peers].urls",
+            "configured sync requires [peers].urls",
         ));
 }
 
@@ -230,6 +280,26 @@ fn sync_peer(peer: &NodeProcess, local_db: &std::path::Path, limit: usize) -> Va
         .clone();
 
     serde_json::from_slice(&output).unwrap()
+}
+
+fn wait_for_store(path: &std::path::Path, predicate: impl Fn(&SqliteEventStore) -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+
+    loop {
+        let store = SqliteEventStore::open(path.to_str().unwrap()).unwrap();
+        if predicate(&store) {
+            return;
+        }
+
+        if Instant::now() >= deadline {
+            panic!(
+                "timed out waiting for store condition at {}",
+                path.display()
+            );
+        }
+
+        thread::sleep(Duration::from_millis(100));
+    }
 }
 
 fn submit_events(peer: &NodeProcess, events: &[tip_core::SignedEvent]) {

@@ -99,6 +99,10 @@ contact = "mailto:admin@example.com"
 on_start = false
 limit = 500
 from_beginning = false
+# Optional periodic peer sync for long-running nodes.
+# periodic_seconds = 300
+# Optional periodic full resync to catch older events missed by cursor sync.
+# full_resync_seconds = 86400
 
 [peers]
 urls = [
@@ -191,12 +195,16 @@ Force a full resync from the beginning:
 tip-node sync --peer http://127.0.0.1:8081 --from-beginning
 ```
 
-Opt-in startup sync:
+Opt-in startup and periodic sync:
 
 ```toml
 [sync]
 on_start = true
+periodic_seconds = 300
+full_resync_seconds = 86400
 ```
+
+`periodic_seconds` keeps long-running nodes synced with configured peers. `full_resync_seconds` periodically scans from the beginning to reduce stale-cursor gaps for late-arriving older events, including revocations.
 
 Then:
 
@@ -204,7 +212,7 @@ Then:
 tip-node serve --config tip-node.toml
 ```
 
-Sync state is persisted per peer in SQLite, so later syncs resume from the last seen `(created_at, id)` cursor.
+Sync state is persisted per peer in SQLite, so later incremental syncs resume from the last seen `(created_at, id)` cursor. Full resyncs are cache-refresh mitigations, not completeness proofs.
 
 ## Development
 
