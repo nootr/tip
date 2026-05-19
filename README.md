@@ -123,6 +123,7 @@ Submit events to a node:
 
 ```bash
 tip event submit identity.json --node http://127.0.0.1:8080
+tip event validate identity.json --node http://127.0.0.1:8080
 tip event submit-batch identity.json claim.json --node http://127.0.0.1:8080
 ```
 

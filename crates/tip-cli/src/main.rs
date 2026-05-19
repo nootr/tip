@@ -102,6 +102,7 @@ struct AttestRevoke {
 #[derive(Subcommand)]
 enum EventCommand {
     Verify(EventFile),
+    Validate(EventSubmit),
     Submit(EventSubmit),
     SubmitBatch(EventSubmitBatch),
 }
@@ -214,6 +215,14 @@ fn main() -> anyhow::Result<()> {
             let event = read_event(&args.path)?;
             use_cases::verify_event(&event, &Ed25519Verifier)?;
             println!("ok");
+        }
+        Command::Event(EventCommand::Validate(args)) => {
+            let event = read_event(&args.path)?;
+            let url = format!("{}/events/validate", args.node.trim_end_matches('/'));
+            let client = reqwest::blocking::Client::new();
+            let response = client.post(url).json(&event).send()?.error_for_status()?;
+            let validation: Value = response.json()?;
+            println!("{}", serde_json::to_string_pretty(&validation)?);
         }
         Command::Event(EventCommand::Submit(args)) => {
             let event = read_event(&args.path)?;

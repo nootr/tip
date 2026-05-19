@@ -109,13 +109,16 @@ fn query_command_exposes_cursor_flags() {
 }
 
 #[test]
-fn submit_batch_command_is_available() {
+fn event_node_commands_are_available() {
     let env = CliEnv::new();
-    let output = env.run_ok(&["event", "submit-batch", "--help"]);
-    let help = String::from_utf8(output).unwrap();
 
-    assert!(help.contains("Usage: tip event submit-batch"));
-    assert!(help.contains("--node"));
+    let validate = String::from_utf8(env.run_ok(&["event", "validate", "--help"])).unwrap();
+    assert!(validate.contains("Usage: tip event validate"));
+    assert!(validate.contains("--node"));
+
+    let submit_batch = String::from_utf8(env.run_ok(&["event", "submit-batch", "--help"])).unwrap();
+    assert!(submit_batch.contains("Usage: tip event submit-batch"));
+    assert!(submit_batch.contains("--node"));
 }
 
 struct CliEnv {

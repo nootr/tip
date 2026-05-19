@@ -25,6 +25,19 @@ fn cli_can_submit_to_and_query_from_node() {
         identity_path.to_str().unwrap(),
     ]);
 
+    let validation = env.run_json(&[
+        "event",
+        "validate",
+        identity_path.to_str().unwrap(),
+        "--node",
+        &base_url,
+    ]);
+    assert_eq!(validation["valid"], true);
+    assert!(validation["error"].is_null());
+
+    let empty_query = env.run_json(&["query", "--subject", public_key, "--node", &base_url]);
+    assert_eq!(empty_query.as_array().unwrap().len(), 0);
+
     env.run_ok(&[
         "event",
         "submit",

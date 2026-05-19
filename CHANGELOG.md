@@ -11,6 +11,7 @@ This project uses pre-1.0 alpha releases while the protocol and reference implem
 - Referential validation for claim and attestation revocation events.
 - Event ID conflict detection for non-identical duplicate submissions.
 - Read-only `POST /events/validate` node endpoint.
+- `tip event validate` CLI command for node-side validation without publishing.
 
 ## v0.1.0-alpha.2 - 2026-05-19
 
