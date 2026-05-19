@@ -12,6 +12,7 @@ TIP nodes are untrusted caches, not authorities. Clients verify signatures and d
 - `CHANGELOG.md` — release notes
 - `CONTRIBUTING.md` — contributor guide
 - `SECURITY.md` — vulnerability reporting policy
+- `docs/STATE.md` — current architecture, threat model, and near roadmap
 - `tip-node.example.toml` — node configuration example
 - `trust-policy.example.toml` — trust policy example
 - `crates/tip-core` — pure domain model, ports, use-cases, and crypto primitives

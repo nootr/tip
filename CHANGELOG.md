@@ -27,6 +27,7 @@ This project uses pre-1.0 alpha releases while the protocol and reference implem
 - Optional periodic peer sync and full-resync intervals for long-running nodes.
 - Configured peers now use `[[peers.nodes]]` with optional node public-key pinning.
 - GitHub Actions workflows opt into the Node.js 24 JavaScript action runtime.
+- `docs/STATE.md` captures the current architecture, threat model, alpha.4 status, and near roadmap.
 
 ## v0.1.0-alpha.2 - 2026-05-19
 
