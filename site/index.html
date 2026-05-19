@@ -128,8 +128,10 @@ limit = 500
 periodic_seconds = 300
 full_resync_seconds = 86400
 
-[peers]
-urls = ["http://127.0.0.1:8081"]</code></pre>
+[[peers.nodes]]
+url = "http://127.0.0.1:8081"
+expected_node_public_key = "peer-node-public-key"
+name = "Community peer"</code></pre>
         </article>
         <article class="panel">
           <h3>HTTP surface</h3>

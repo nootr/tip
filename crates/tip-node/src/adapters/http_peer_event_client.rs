@@ -1,8 +1,14 @@
+use serde::Deserialize;
 use tip_core::{
     domain::EventFilter,
     ports::{PeerError, PeerEventClient},
     SignedEvent,
 };
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PeerNodeInfo {
+    pub node_public_key: String,
+}
 
 pub struct HttpPeerEventClient {
     base_url: String,
@@ -15,6 +21,17 @@ impl HttpPeerEventClient {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             client: reqwest::blocking::Client::new(),
         }
+    }
+
+    pub fn node_info(&self) -> Result<PeerNodeInfo, PeerError> {
+        self.client
+            .get(format!("{}/info", self.base_url))
+            .send()
+            .map_err(to_peer_error)?
+            .error_for_status()
+            .map_err(to_peer_error)?
+            .json()
+            .map_err(to_peer_error)
     }
 }
 

@@ -58,9 +58,18 @@ impl Default for SyncConfig {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PeerConfig {
     #[serde(default)]
-    pub urls: Vec<String>,
+    pub nodes: Vec<PeerNodeConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PeerNodeConfig {
+    pub url: String,
+    pub expected_node_public_key: Option<String>,
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

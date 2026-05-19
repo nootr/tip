@@ -329,7 +329,18 @@ TIP 0.1 sync is intentionally simple and implementation-level. The protocol prim
 - incremental reads via `GET /events` cursor pagination
 - idempotent writes via `POST /events` or `POST /events/batch`
 
-The reference node supports explicit peer lists, manual pull sync, opt-in startup sync, optional periodic sync, optional periodic full resync, and persistent per-peer cursor state. This is not peer discovery, consensus, or a guarantee that all nodes converge globally.
+The reference node supports explicit configured peer nodes, manual pull sync, opt-in startup sync, optional periodic sync, optional periodic full resync, peer node-public-key pinning, and persistent per-peer cursor state. This is not peer discovery, consensus, or a guarantee that all nodes converge globally.
+
+Configured peer nodes use:
+
+```toml
+[[peers.nodes]]
+url = "https://tip.example.org"
+expected_node_public_key = "<peer-node-public-key>"
+name = "Example community node"
+```
+
+Before syncing a configured peer, a node SHOULD request `GET /info` and compare `node_public_key` with `expected_node_public_key` when configured. A mismatch MUST abort sync for that peer. Peer pinning reduces endpoint impersonation risk; it does not make the peer authoritative and does not prove event-log completeness.
 
 A node may store, per peer:
 

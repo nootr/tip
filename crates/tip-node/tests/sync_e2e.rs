@@ -101,10 +101,12 @@ fn node_sync_pulls_events_from_configured_peers() {
     std::fs::write(
         &config_path,
         format!(
-            "[node]\ndb = \"{}\"\n\n[peers]\nurls = [\n  \"{}\",\n  \"{}\"\n]\n",
+            "[node]\ndb = \"{}\"\n\n[[peers.nodes]]\nurl = \"{}\"\nexpected_node_public_key = \"{}\"\nname = \"peer-a\"\n\n[[peers.nodes]]\nurl = \"{}\"\nexpected_node_public_key = \"{}\"\nname = \"peer-b\"\n",
             local_db.display(),
             peer_a.base_url,
-            peer_b.base_url
+            peer_a.node_public_key(),
+            peer_b.base_url,
+            peer_b.node_public_key()
         ),
     )
     .unwrap();
@@ -156,11 +158,12 @@ fn node_serve_periodic_full_resync_catches_late_older_events() {
     std::fs::write(
         &config_path,
         format!(
-            "[node]\nbind = \"{}\"\ndb = \"{}\"\nkey = \"{}\"\n\n[sync]\nlimit = 1\nperiodic_seconds = 1\nfull_resync_seconds = 2\n\n[peers]\nurls = [\"{}\"]\n",
+            "[node]\nbind = \"{}\"\ndb = \"{}\"\nkey = \"{}\"\n\n[sync]\nlimit = 1\nperiodic_seconds = 1\nfull_resync_seconds = 2\n\n[[peers.nodes]]\nurl = \"{}\"\nexpected_node_public_key = \"{}\"\nname = \"periodic-peer\"\n",
             bind,
             local_db.display(),
             env.path("periodic-local-key.json").display(),
-            peer.base_url
+            peer.base_url,
+            peer.node_public_key()
         ),
     )
     .unwrap();
@@ -207,11 +210,12 @@ fn node_serve_syncs_configured_peers_on_start_when_enabled() {
     std::fs::write(
         &config_path,
         format!(
-            "[node]\nbind = \"{}\"\ndb = \"{}\"\nkey = \"{}\"\n\n[sync]\non_start = true\nlimit = 1\n\n[peers]\nurls = [\"{}\"]\n",
+            "[node]\nbind = \"{}\"\ndb = \"{}\"\nkey = \"{}\"\n\n[sync]\non_start = true\nlimit = 1\n\n[[peers.nodes]]\nurl = \"{}\"\nexpected_node_public_key = \"{}\"\nname = \"startup-peer\"\n",
             bind,
             local_db.display(),
             env.path("startup-local-key.json").display(),
-            peer.base_url
+            peer.base_url,
+            peer.node_public_key()
         ),
     )
     .unwrap();
@@ -240,6 +244,33 @@ fn node_serve_syncs_configured_peers_on_start_when_enabled() {
 }
 
 #[test]
+fn node_sync_rejects_mismatched_pinned_peer_identity() {
+    let env = SyncEnv::new();
+    let peer = NodeProcess::start(
+        env.path("pinned-peer.sqlite3"),
+        env.path("pinned-peer-key.json"),
+    );
+    let config_path = env.path("pinned-tip-node.toml");
+    let local_db = env.path("pinned-local.sqlite3");
+    std::fs::write(
+        &config_path,
+        format!(
+            "[node]\ndb = \"{}\"\n\n[[peers.nodes]]\nurl = \"{}\"\nexpected_node_public_key = \"wrong-key\"\nname = \"pinned-peer\"\n",
+            local_db.display(),
+            peer.base_url,
+        ),
+    )
+    .unwrap();
+
+    AssertCommand::cargo_bin("tip-node")
+        .unwrap()
+        .args(["sync", "--config", config_path.to_str().unwrap()])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("node public key mismatch"));
+}
+
+#[test]
 fn node_serve_sync_on_start_requires_configured_peers() {
     let env = SyncEnv::new();
     AssertCommand::cargo_bin("tip-node")
@@ -257,7 +288,7 @@ fn node_serve_sync_on_start_requires_configured_peers() {
         .assert()
         .failure()
         .stderr(predicates::str::contains(
-            "configured sync requires [peers].urls",
+            "configured sync requires [[peers.nodes]] entries",
         ));
 }
 
@@ -374,6 +405,18 @@ impl NodeProcess {
         let mut process = Self { child, base_url };
         process.wait_until_healthy();
         process
+    }
+
+    fn node_public_key(&self) -> String {
+        reqwest::blocking::get(format!("{}/info", self.base_url))
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .json::<Value>()
+            .unwrap()["node_public_key"]
+            .as_str()
+            .unwrap()
+            .to_string()
     }
 
     fn wait_until_healthy(&mut self) {

@@ -2,6 +2,7 @@ use anyhow::{bail, Context};
 use clap::{Parser, Subcommand};
 use serde_json::json;
 use std::{
+    collections::BTreeMap,
     net::SocketAddr,
     sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -17,7 +18,7 @@ use tip_node::{
         http_peer_event_client::HttpPeerEventClient, node_key_file,
         sqlite_event_store::SqliteEventStore,
     },
-    config::NodeConfig,
+    config::{NodeConfig, PeerNodeConfig},
     http::{router, AppState},
 };
 
@@ -90,10 +91,10 @@ fn run_server(command: ServeCommand) -> anyhow::Result<()> {
 async fn serve(command: ServeCommand) -> anyhow::Result<()> {
     let config = load_optional_config(command.config.as_deref())?;
     let resolved = resolve_serve_config(&command, config.as_ref())?;
-    let peer_urls = if resolved.sync_on_start || resolved.sync_periodic_seconds.is_some() {
-        Some(config_peer_urls(
+    let peers = if resolved.sync_on_start || resolved.sync_periodic_seconds.is_some() {
+        Some(config_peer_nodes(
             config.as_ref(),
-            "configured sync requires [peers].urls",
+            "configured sync requires [[peers.nodes]] entries",
         )?)
     } else {
         None
@@ -106,7 +107,7 @@ async fn serve(command: ServeCommand) -> anyhow::Result<()> {
     if resolved.sync_on_start {
         let summary = tokio::task::block_in_place(|| {
             sync_peers(
-                peer_urls.as_ref().expect("peer URLs are loaded"),
+                peers.as_ref().expect("peers are loaded"),
                 &store,
                 resolved.sync_limit,
                 resolved.sync_from_beginning,
@@ -121,7 +122,7 @@ async fn serve(command: ServeCommand) -> anyhow::Result<()> {
     let store = Arc::new(Mutex::new(store));
     if let Some(periodic_seconds) = resolved.sync_periodic_seconds {
         spawn_periodic_sync(
-            peer_urls.expect("peer URLs are loaded"),
+            peers.expect("peers are loaded"),
             Arc::clone(&store),
             resolved.sync_limit,
             periodic_seconds,
@@ -144,7 +145,7 @@ async fn serve(command: ServeCommand) -> anyhow::Result<()> {
 
 fn sync(command: SyncCommand) -> anyhow::Result<()> {
     let config = load_optional_config(command.config.as_deref())?;
-    let peer_urls = sync_peer_urls(&command, config.as_ref())?;
+    let peers = sync_peer_nodes(&command, config.as_ref())?;
     let db = command
         .db
         .clone()
@@ -161,9 +162,9 @@ fn sync(command: SyncCommand) -> anyhow::Result<()> {
             .unwrap_or(false);
 
     let store = SqliteEventStore::open(&db).context("open SQLite event store")?;
-    let summary = sync_peers(&peer_urls, &store, limit, from_beginning)?;
+    let summary = sync_peers(&peers, &store, limit, from_beginning)?;
 
-    let output = if peer_urls.len() == 1 && command.config.is_none() && command.peer.len() == 1 {
+    let output = if peers.len() == 1 && command.config.is_none() && command.peer.len() == 1 {
         json!({
             "pulled": summary.pulled,
             "accepted": summary.accepted,
@@ -189,6 +190,31 @@ struct MultiPeerSyncSummary {
     accepted: usize,
     rejected: usize,
     peers: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SyncPeer {
+    url: String,
+    expected_node_public_key: Option<String>,
+    name: Option<String>,
+}
+
+impl SyncPeer {
+    fn unpinned(url: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            expected_node_public_key: None,
+            name: None,
+        }
+    }
+
+    fn from_config(config: PeerNodeConfig) -> Self {
+        Self {
+            url: config.url,
+            expected_node_public_key: config.expected_node_public_key,
+            name: config.name,
+        }
+    }
 }
 
 struct ResolvedServeConfig {
@@ -272,7 +298,7 @@ impl Clock for SystemClock {
 }
 
 fn spawn_periodic_sync(
-    peer_urls: Vec<String>,
+    peers: Vec<SyncPeer>,
     store: Arc<Mutex<SqliteEventStore>>,
     limit: usize,
     periodic_seconds: u64,
@@ -298,13 +324,13 @@ fn spawn_periodic_sync(
                 last_full_resync = SystemTime::now();
             }
 
-            let peer_urls = peer_urls.clone();
+            let peers = peers.clone();
             let store = Arc::clone(&store);
             let result = tokio::task::spawn_blocking(move || {
                 let store = store
                     .lock()
                     .map_err(|_| anyhow::anyhow!("store lock poisoned"))?;
-                sync_peers(&peer_urls, &store, limit, from_beginning)
+                sync_peers(&peers, &store, limit, from_beginning)
             })
             .await;
 
@@ -321,20 +347,21 @@ fn spawn_periodic_sync(
 }
 
 fn sync_peers(
-    peer_urls: &[String],
+    peers: &[SyncPeer],
     store: &SqliteEventStore,
     limit: usize,
     from_beginning: bool,
 ) -> anyhow::Result<MultiPeerSyncSummary> {
-    let mut peer_summaries = Vec::with_capacity(peer_urls.len());
+    let mut peer_summaries = Vec::with_capacity(peers.len());
     let mut total_pulled = 0usize;
     let mut total_accepted = 0usize;
     let mut total_rejected = 0usize;
 
-    for peer_url in peer_urls {
-        let peer = HttpPeerEventClient::new(peer_url);
+    for sync_peer in peers {
+        let peer = HttpPeerEventClient::new(&sync_peer.url);
+        let node_public_key = verify_peer_identity(sync_peer, &peer)?;
         let summary = use_cases::sync_from_peer_with_state(
-            peer_url,
+            &sync_peer.url,
             &peer,
             store,
             store,
@@ -345,12 +372,16 @@ fn sync_peers(
                 from_beginning,
             },
         )
-        .with_context(|| format!("sync from peer {}", peer_url))?;
+        .with_context(|| format!("sync from peer {}", sync_peer.url))?;
         total_pulled += summary.pulled;
         total_accepted += summary.accepted;
         total_rejected += summary.rejected;
         peer_summaries.push(json!({
-            "peer": peer_url,
+            "peer": sync_peer.url,
+            "name": sync_peer.name.clone(),
+            "node_public_key": node_public_key,
+            "expected_node_public_key": sync_peer.expected_node_public_key.clone(),
+            "pinned": sync_peer.expected_node_public_key.is_some(),
             "pulled": summary.pulled,
             "accepted": summary.accepted,
             "rejected": summary.rejected,
@@ -365,42 +396,97 @@ fn sync_peers(
     })
 }
 
-fn sync_peer_urls(
-    command: &SyncCommand,
-    config: Option<&NodeConfig>,
-) -> anyhow::Result<Vec<String>> {
-    let mut peers = command.peer.clone();
+fn verify_peer_identity(
+    sync_peer: &SyncPeer,
+    peer: &HttpPeerEventClient,
+) -> anyhow::Result<String> {
+    let info = peer
+        .node_info()
+        .with_context(|| format!("get /info from peer {}", sync_peer.url))?;
 
-    if let Some(config) = config {
-        peers.extend(config.peers.urls.clone());
+    if let Some(expected) = &sync_peer.expected_node_public_key {
+        if &info.node_public_key != expected {
+            bail!(
+                "peer {} node public key mismatch: expected {}, got {}",
+                sync_peer.url,
+                expected,
+                info.node_public_key
+            );
+        }
     }
 
-    normalize_peer_urls(
+    Ok(info.node_public_key)
+}
+
+fn sync_peer_nodes(
+    command: &SyncCommand,
+    config: Option<&NodeConfig>,
+) -> anyhow::Result<Vec<SyncPeer>> {
+    let mut peers = command
+        .peer
+        .iter()
+        .cloned()
+        .map(SyncPeer::unpinned)
+        .collect::<Vec<_>>();
+
+    if let Some(config) = config {
+        peers.extend(
+            config
+                .peers
+                .nodes
+                .clone()
+                .into_iter()
+                .map(SyncPeer::from_config),
+        );
+    }
+
+    normalize_peer_nodes(
         peers,
-        "sync requires at least one --peer or --config with [peers].urls",
+        "sync requires at least one --peer or --config with [[peers.nodes]]",
     )
 }
 
-fn config_peer_urls(
+fn config_peer_nodes(
     config: Option<&NodeConfig>,
     empty_message: &str,
-) -> anyhow::Result<Vec<String>> {
+) -> anyhow::Result<Vec<SyncPeer>> {
     let peers = config
         .ok_or_else(|| anyhow::anyhow!(empty_message.to_string()))?
         .peers
-        .urls
-        .clone();
+        .nodes
+        .clone()
+        .into_iter()
+        .map(SyncPeer::from_config)
+        .collect::<Vec<_>>();
 
-    normalize_peer_urls(peers, empty_message)
+    normalize_peer_nodes(peers, empty_message)
 }
 
-fn normalize_peer_urls(mut peers: Vec<String>, empty_message: &str) -> anyhow::Result<Vec<String>> {
-    peers.sort();
-    peers.dedup();
+fn normalize_peer_nodes(
+    peers: Vec<SyncPeer>,
+    empty_message: &str,
+) -> anyhow::Result<Vec<SyncPeer>> {
+    let mut by_url = BTreeMap::new();
 
-    if peers.is_empty() {
+    for mut peer in peers {
+        peer.url = peer.url.trim_end_matches('/').to_string();
+        if peer.url.is_empty() {
+            bail!("peer URL must not be empty");
+        }
+
+        if let Some(existing) = by_url.insert(peer.url.clone(), peer.clone()) {
+            if existing != peer {
+                bail!(
+                    "duplicate peer URL with conflicting configuration: {}",
+                    peer.url
+                );
+            }
+        }
+    }
+
+    if by_url.is_empty() {
         bail!(empty_message.to_string());
     }
 
-    Ok(peers)
+    Ok(by_url.into_values().collect())
 }

@@ -104,11 +104,15 @@ from_beginning = false
 # Optional periodic full resync to catch older events missed by cursor sync.
 # full_resync_seconds = 86400
 
-[peers]
-urls = [
-  "http://127.0.0.1:8081",
-  "http://127.0.0.1:8082",
-]
+[[peers.nodes]]
+url = "http://127.0.0.1:8081"
+expected_node_public_key = "replace-with-peer-node-public-key"
+name = "Local peer A"
+
+[[peers.nodes]]
+url = "http://127.0.0.1:8082"
+expected_node_public_key = "replace-with-peer-node-public-key"
+name = "Local peer B"
 ```
 
 CLI flags and environment variables override config values where available:
@@ -175,7 +179,7 @@ tip query \
 
 ## Peer sync
 
-TIP currently supports explicit peer lists. There is no peer discovery yet.
+TIP currently supports explicit configured peer nodes. There is no peer discovery yet. Configured peers should pin `expected_node_public_key`; CLI `--peer` is intended for explicit ad-hoc unpinned sync.
 
 Manual one-shot sync from a peer:
 
@@ -204,7 +208,7 @@ periodic_seconds = 300
 full_resync_seconds = 86400
 ```
 
-`periodic_seconds` keeps long-running nodes synced with configured peers. `full_resync_seconds` periodically scans from the beginning to reduce stale-cursor gaps for late-arriving older events, including revocations.
+`periodic_seconds` keeps long-running nodes synced with configured peers. `full_resync_seconds` periodically scans from the beginning to reduce stale-cursor gaps for late-arriving older events, including revocations. Peer key pinning reduces endpoint impersonation risk, but it does not make a peer authoritative or prove completeness.
 
 Then:
 
