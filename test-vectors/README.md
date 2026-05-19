@@ -2,6 +2,8 @@
 
 `tip-0.1.json` contains deterministic Ed25519/JCS test vectors for TIP 0.1.
 
+`tip-bundle-0.1.json` contains a deterministic bundle vector with raw events and reconstructed active projections.
+
 They are generated with:
 
 ```bash

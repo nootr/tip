@@ -20,6 +20,7 @@ This project uses pre-1.0 alpha releases while the protocol and reference implem
 - Portable active trust evidence bundles via `tip bundle create`, `tip bundle verify`, `tip bundle submit`, and `tip trust evaluate --bundle`; bundles include raw events and active projections, with semantic projection verification.
 - TIP bundle format documented in `SPEC.md`.
 - `tip trust evaluate --bundle` can infer the subject from the bundle.
+- Bundle format test vector for `tip-bundle/0.1`.
 
 ## v0.1.0-alpha.2 - 2026-05-19
 

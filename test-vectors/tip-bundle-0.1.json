@@ -1,0 +1,49 @@
+{
+  "description": "TIP bundle 0.1 deterministic test vector",
+  "bundle": {
+    "version": "tip-bundle/0.1",
+    "subject": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+    "events": [
+      {
+        "id": "sha256:44008dc711e91679e9d5ce3d2ea8982e5a01cf0d6d222c4bc3ef609c90341c27",
+        "version": "tip/0.1",
+        "type": "identity.created",
+        "subject": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "issuer": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "created_at": 1700000000,
+        "payload": {},
+        "signature": "keTmuGqr-46t81bRW0oBeWPj1nhJMpQRkAKRJx8A0FStIYNtO4nZfgwSE8xmHTQsqMfqDKhFxISbpO9TqMnCCw"
+      },
+      {
+        "id": "sha256:67fc8a34728b4d28047f9602fb19c0573e0c1337f7e6356d1eada7671350b638",
+        "version": "tip/0.1",
+        "type": "claim.added",
+        "subject": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "issuer": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "created_at": 1700000000,
+        "payload": {
+          "claim_type": "github",
+          "proof": {
+            "url": "https://gist.github.com/joris/tip-proof"
+          },
+          "value": "joris"
+        },
+        "signature": "_tO1CZf39eSjy-I8u-iBt1oUe2wDafnM-uqUznDAQD2DUeyzbPYIiAkcwYhQc1qZd2V7WzuUUGqB-F2JqCf3Dw"
+      },
+      {
+        "id": "sha256:3c4d415ed5e6b7b9faea146eff09c56d3cd4d695112c0bfacdcb554116bb1ecf",
+        "version": "tip/0.1",
+        "type": "claim.revoked",
+        "subject": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "issuer": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w",
+        "created_at": 1700000000,
+        "payload": {
+          "claim_id": "sha256:67fc8a34728b4d28047f9602fb19c0573e0c1337f7e6356d1eada7671350b638"
+        },
+        "signature": "dEyTj9mbJ37NQuMpW6IHjqLI1b3R5Su54y9aQ67x84ivEb-DsZ70eGw6wTdE_lq5bZ5hnBSFVu7D9Pfou3JsCQ"
+      }
+    ],
+    "active_claims": [],
+    "active_attestations": []
+  }
+}
