@@ -77,11 +77,10 @@ The protocol is still alpha and allowed to break. Backwards compatibility is not
 
 Recommended next work, in order:
 
-1. Add evidence-source metadata and incompleteness warnings to `tip trust evaluate` output.
-2. Add node-local sequence-based sync endpoint to avoid signer-controlled `created_at` cursor gaps.
-3. Move bundle/projection verification helpers into `tip-core` so CLI is not the only implementation.
-4. Add schemas/OpenAPI-style docs for node API and bundle format.
-5. Explore signed checkpoints/transparency logs for stronger consistency evidence.
+1. Add node-local sequence-based sync endpoint to avoid signer-controlled `created_at` cursor gaps.
+2. Move bundle/projection verification helpers into `tip-core` so CLI is not the only implementation.
+3. Add schemas/OpenAPI-style docs for node API and bundle format.
+4. Explore signed checkpoints/transparency logs for stronger consistency evidence.
 
 ## Design guardrails
 

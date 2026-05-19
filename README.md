@@ -166,6 +166,8 @@ tip bundle submit bundle.json --node http://127.0.0.1:8081
 tip trust evaluate --policy trust-policy.example.toml --bundle bundle.json
 ```
 
+`tip trust evaluate` includes an `evidence` object describing whether evidence came from a node or bundle. Node-backed evaluation is marked `completeness = "unverified"` because one node cannot prove absence of omitted events or revocations.
+
 See `trust-policy.example.toml` for a documented policy template.
 
 Use cursor pagination:

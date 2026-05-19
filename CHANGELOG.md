@@ -28,6 +28,7 @@ This project uses pre-1.0 alpha releases while the protocol and reference implem
 - Configured peers now use `[[peers.nodes]]` with optional node public-key pinning.
 - GitHub Actions workflows opt into the Node.js 24 JavaScript action runtime.
 - `docs/STATE.md` captures the current architecture, threat model, alpha.4 status, and near roadmap.
+- `tip trust evaluate` output includes evidence source metadata and completeness warnings.
 
 ## v0.1.0-alpha.2 - 2026-05-19
 

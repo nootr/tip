@@ -341,7 +341,7 @@ fn main() -> anyhow::Result<()> {
         }
         Command::Trust(TrustCommand::Evaluate(args)) => {
             let policy = TrustPolicy::load(&args.policy)?;
-            let (subject, evidence) = match &args.bundle {
+            let (subject, evidence, evidence_source) = match &args.bundle {
                 Some(path) => {
                     let bundle = read_bundle(path)?;
                     let subject = match &args.subject {
@@ -354,7 +354,15 @@ fn main() -> anyhow::Result<()> {
                         None => bundle.subject.clone(),
                     };
                     let evidence = bundle.into_evidence_for_subject(&subject)?;
-                    (subject, evidence)
+                    (
+                        subject,
+                        evidence,
+                        json!({
+                            "source": "bundle",
+                            "bundle": path.display().to_string(),
+                            "completeness": "bundle-only",
+                        }),
+                    )
                 }
                 None => {
                     let subject = args
@@ -362,10 +370,20 @@ fn main() -> anyhow::Result<()> {
                         .clone()
                         .ok_or_else(|| anyhow::anyhow!("subject is required without --bundle"))?;
                     let evidence = fetch_active_evidence(&args.node, &subject)?;
-                    (subject, evidence)
+                    (
+                        subject,
+                        evidence,
+                        json!({
+                            "source": "node",
+                            "node": args.node,
+                            "completeness": "unverified",
+                            "warning": "A single node cannot prove absence of revocations or omitted events.",
+                        }),
+                    )
                 }
             };
-            let evaluation = evaluate_trust(&subject, &policy.trust, evidence);
+            let mut evaluation = evaluate_trust(&subject, &policy.trust, evidence);
+            evaluation["evidence"] = evidence_source;
             println!("{}", serde_json::to_string_pretty(&evaluation)?);
         }
         Command::Bundle(BundleCommand::Create(args)) => {

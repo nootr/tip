@@ -149,6 +149,13 @@ fn cli_can_submit_batch_to_and_query_from_node() {
         1
     );
     assert_eq!(evaluation["warnings"].as_array().unwrap().len(), 0);
+    assert_eq!(evaluation["evidence"]["source"], "node");
+    assert_eq!(evaluation["evidence"]["node"], base_url);
+    assert_eq!(evaluation["evidence"]["completeness"], "unverified");
+    assert!(evaluation["evidence"]["warning"]
+        .as_str()
+        .unwrap()
+        .contains("single node cannot prove absence"));
 
     let bundle_path = env.path("bundle.json");
     env.run_ok(&[
@@ -208,6 +215,12 @@ fn cli_can_submit_batch_to_and_query_from_node() {
             .len(),
         1
     );
+    assert_eq!(bundle_evaluation["evidence"]["source"], "bundle");
+    assert_eq!(
+        bundle_evaluation["evidence"]["bundle"],
+        bundle_path.display().to_string()
+    );
+    assert_eq!(bundle_evaluation["evidence"]["completeness"], "bundle-only");
 
     let imported_node = NodeProcess::start(env.temp_dir.path());
     let submit_bundle = env.run_json(&[
