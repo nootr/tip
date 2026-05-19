@@ -263,6 +263,63 @@ async fn post_event_rejects_tampered_event() {
 }
 
 #[tokio::test]
+async fn post_event_rejects_revocation_without_referenced_event() {
+    let db = TestDb::new();
+    let signer = Ed25519Keypair::generate();
+    let claim = use_cases::add_claim(&FixedClock, &signer, "github", "joris", None).unwrap();
+    let revocation = use_cases::revoke_claim(&FixedClock, &signer, &claim.id).unwrap();
+
+    let response = db
+        .app()
+        .oneshot(json_request(Method::POST, "/events", &revocation))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert!(json_body(response).await["error"]
+        .as_str()
+        .unwrap()
+        .contains("referenced claim event not found"));
+}
+
+#[tokio::test]
+async fn post_events_batch_accepts_claim_and_matching_revocation() {
+    let db = TestDb::new();
+    let app = db.app();
+    let signer = Ed25519Keypair::generate();
+    let claim = use_cases::add_claim(&FixedClock, &signer, "github", "joris", None).unwrap();
+    let revocation = use_cases::revoke_claim(&FixedClock, &signer, &claim.id).unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(json_request(
+            Method::POST,
+            "/events/batch",
+            &vec![claim.clone(), revocation.clone()],
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["accepted"], 2);
+    assert_eq!(body["rejected"], 0);
+
+    let query = app
+        .oneshot(request(
+            Method::GET,
+            &format!("/events?subject={}", signer.public_key()),
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    let events: Vec<SignedEvent> = serde_json::from_value(json_body(query).await).unwrap();
+    assert_eq!(events.len(), 2);
+    assert!(events.iter().any(|event| event.id == claim.id));
+    assert!(events.iter().any(|event| event.id == revocation.id));
+}
+
+#[tokio::test]
 async fn query_events_supports_limit_and_cursor() {
     let db = TestDb::new();
     let app = db.app();

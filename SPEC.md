@@ -129,6 +129,12 @@ Required payload fields:
 }
 ```
 
+Rules:
+
+- `claim_id` MUST reference an existing `claim.added` event
+- `subject` MUST match the referenced claim subject
+- `issuer` MUST match the referenced claim issuer
+
 ### `attestation.issued`
 
 Issuer signs a statement about subject.
@@ -156,6 +162,12 @@ Required payload fields:
 }
 ```
 
+Rules:
+
+- `attestation_id` MUST reference an existing `attestation.issued` event
+- `subject` MUST match the referenced attestation subject
+- `issuer` MUST match the referenced attestation issuer
+
 ## Node validation
 
 On `POST /events`, nodes MUST validate:
@@ -165,6 +177,8 @@ On `POST /events`, nodes MUST validate:
 - known event type
 - event id matches canonical unsigned event hash
 - Ed25519 signature verifies against `issuer`
+- revocation references point to existing events of the expected type
+- revocation `subject` and `issuer` match the referenced event
 
 Nodes MUST NOT treat external claims as true merely because the event is valid.
 

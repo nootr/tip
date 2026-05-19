@@ -6,7 +6,9 @@ This project uses pre-1.0 alpha releases while the protocol and reference implem
 
 ## Unreleased
 
-- No unreleased changes yet.
+### Added
+
+- Referential validation for claim and attestation revocation events.
 
 ## v0.1.0-alpha.2 - 2026-05-19
 

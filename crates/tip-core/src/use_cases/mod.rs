@@ -158,7 +158,65 @@ pub fn submit_event(
     event: &SignedEvent,
 ) -> Result<(), UseCaseError> {
     verify_event(event, verifier)?;
+    validate_event_references(store, event)?;
     store.append(event)?;
+    Ok(())
+}
+
+pub fn validate_event_references(
+    store: &impl EventStore,
+    event: &SignedEvent,
+) -> Result<(), UseCaseError> {
+    match event.unsigned.kind {
+        EventType::ClaimRevoked => {
+            let claim_id = payload_string(event, "claim_id")?;
+            let claim = require_referenced_event(store, claim_id, "claim")?;
+
+            if claim.unsigned.kind != EventType::ClaimAdded {
+                return Err(invalid_event(format!(
+                    "claim.revoked references {} event {}",
+                    claim.unsigned.kind, claim.id
+                )));
+            }
+
+            if claim.unsigned.subject != event.unsigned.subject {
+                return Err(invalid_event(
+                    "claim.revoked subject must match referenced claim subject",
+                ));
+            }
+
+            if claim.unsigned.issuer != event.unsigned.issuer {
+                return Err(invalid_event(
+                    "claim.revoked issuer must match referenced claim issuer",
+                ));
+            }
+        }
+        EventType::AttestationRevoked => {
+            let attestation_id = payload_string(event, "attestation_id")?;
+            let attestation = require_referenced_event(store, attestation_id, "attestation")?;
+
+            if attestation.unsigned.kind != EventType::AttestationIssued {
+                return Err(invalid_event(format!(
+                    "attestation.revoked references {} event {}",
+                    attestation.unsigned.kind, attestation.id
+                )));
+            }
+
+            if attestation.unsigned.subject != event.unsigned.subject {
+                return Err(invalid_event(
+                    "attestation.revoked subject must match referenced attestation subject",
+                ));
+            }
+
+            if attestation.unsigned.issuer != event.unsigned.issuer {
+                return Err(invalid_event(
+                    "attestation.revoked issuer must match referenced attestation issuer",
+                ));
+            }
+        }
+        EventType::IdentityCreated | EventType::ClaimAdded | EventType::AttestationIssued => {}
+    }
+
     Ok(())
 }
 
@@ -167,6 +225,30 @@ pub fn query_events(
     filter: &EventFilter,
 ) -> Result<Vec<SignedEvent>, UseCaseError> {
     Ok(store.query(filter)?)
+}
+
+fn require_referenced_event(
+    store: &impl EventStore,
+    id: &str,
+    label: &str,
+) -> Result<SignedEvent, UseCaseError> {
+    store
+        .get(id)?
+        .ok_or_else(|| invalid_event(format!("referenced {label} event not found: {id}")))
+}
+
+fn payload_string<'a>(event: &'a SignedEvent, field: &str) -> Result<&'a str, UseCaseError> {
+    event
+        .unsigned
+        .payload
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| invalid_event(format!("payload.{field} must be a non-empty string")))
+}
+
+fn invalid_event(message: impl Into<String>) -> UseCaseError {
+    UseCaseError::Domain(DomainError::InvalidEvent(message.into()))
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -449,5 +531,141 @@ mod tests {
             attestation.id
         );
         verify_event(&attestation_revocation, &Ed25519Verifier).unwrap();
+    }
+
+    #[test]
+    fn submit_claim_revocation_requires_existing_matching_claim() {
+        let issuer = Ed25519Keypair::generate();
+        let other = Ed25519Keypair::generate();
+        let store = InMemoryEventStore::new();
+        let claim = add_claim(&FixedClock, &issuer, "github", "joris", None).unwrap();
+        let revocation = revoke_claim(&FixedClock, &issuer, &claim.id).unwrap();
+
+        let missing = submit_event(&store, &Ed25519Verifier, &revocation).unwrap_err();
+        assert!(missing
+            .to_string()
+            .contains("referenced claim event not found"));
+
+        submit_event(&store, &Ed25519Verifier, &claim).unwrap();
+        submit_event(&store, &Ed25519Verifier, &revocation).unwrap();
+
+        let wrong_issuer_revocation = sign_event(
+            &other,
+            UnsignedEvent::new(
+                EventType::ClaimRevoked,
+                issuer.public_key(),
+                other.public_key(),
+                FixedClock.now_unix_seconds(),
+                json!({ "claim_id": claim.id }),
+            ),
+        )
+        .unwrap();
+        let wrong_issuer =
+            submit_event(&store, &Ed25519Verifier, &wrong_issuer_revocation).unwrap_err();
+        assert!(wrong_issuer
+            .to_string()
+            .contains("claim.revoked issuer must match"));
+    }
+
+    #[test]
+    fn submit_claim_revocation_rejects_wrong_reference_type_or_subject() {
+        let issuer = Ed25519Keypair::generate();
+        let other_subject = Ed25519Keypair::generate();
+        let store = InMemoryEventStore::new();
+        let identity = create_identity(&FixedClock, &issuer).unwrap();
+        let claim = add_claim(&FixedClock, &issuer, "github", "joris", None).unwrap();
+        submit_event(&store, &Ed25519Verifier, &identity).unwrap();
+        submit_event(&store, &Ed25519Verifier, &claim).unwrap();
+
+        let wrong_type = revoke_claim(&FixedClock, &issuer, &identity.id).unwrap();
+        let wrong_type_error = submit_event(&store, &Ed25519Verifier, &wrong_type).unwrap_err();
+        assert!(wrong_type_error
+            .to_string()
+            .contains("claim.revoked references identity.created"));
+
+        let wrong_subject = sign_event(
+            &issuer,
+            UnsignedEvent::new(
+                EventType::ClaimRevoked,
+                other_subject.public_key(),
+                issuer.public_key(),
+                FixedClock.now_unix_seconds(),
+                json!({ "claim_id": claim.id }),
+            ),
+        )
+        .unwrap();
+        let wrong_subject_error =
+            submit_event(&store, &Ed25519Verifier, &wrong_subject).unwrap_err();
+        assert!(wrong_subject_error
+            .to_string()
+            .contains("claim.revoked subject must match"));
+    }
+
+    #[test]
+    fn submit_attestation_revocation_requires_existing_matching_attestation() {
+        let issuer = Ed25519Keypair::generate();
+        let other_issuer = Ed25519Keypair::generate();
+        let subject = Ed25519Keypair::generate();
+        let other_subject = Ed25519Keypair::generate();
+        let store = InMemoryEventStore::new();
+        let attestation = issue_attestation(
+            &FixedClock,
+            &issuer,
+            subject.public_key(),
+            "trusted_contributor",
+            None,
+        )
+        .unwrap();
+        let revocation =
+            revoke_attestation(&FixedClock, &issuer, subject.public_key(), &attestation.id)
+                .unwrap();
+
+        let missing = submit_event(&store, &Ed25519Verifier, &revocation).unwrap_err();
+        assert!(missing
+            .to_string()
+            .contains("referenced attestation event not found"));
+
+        submit_event(&store, &Ed25519Verifier, &attestation).unwrap();
+        submit_event(&store, &Ed25519Verifier, &revocation).unwrap();
+
+        let wrong_subject = revoke_attestation(
+            &FixedClock,
+            &issuer,
+            other_subject.public_key(),
+            &attestation.id,
+        )
+        .unwrap();
+        let wrong_subject_error =
+            submit_event(&store, &Ed25519Verifier, &wrong_subject).unwrap_err();
+        assert!(wrong_subject_error
+            .to_string()
+            .contains("attestation.revoked subject must match"));
+
+        let wrong_issuer = revoke_attestation(
+            &FixedClock,
+            &other_issuer,
+            subject.public_key(),
+            &attestation.id,
+        )
+        .unwrap();
+        let wrong_issuer_error = submit_event(&store, &Ed25519Verifier, &wrong_issuer).unwrap_err();
+        assert!(wrong_issuer_error
+            .to_string()
+            .contains("attestation.revoked issuer must match"));
+    }
+
+    #[test]
+    fn submit_attestation_revocation_rejects_wrong_reference_type() {
+        let issuer = Ed25519Keypair::generate();
+        let store = InMemoryEventStore::new();
+        let claim = add_claim(&FixedClock, &issuer, "github", "joris", None).unwrap();
+        submit_event(&store, &Ed25519Verifier, &claim).unwrap();
+
+        let wrong_type =
+            revoke_attestation(&FixedClock, &issuer, issuer.public_key(), &claim.id).unwrap();
+        let error = submit_event(&store, &Ed25519Verifier, &wrong_type).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("attestation.revoked references claim.added"));
     }
 }
