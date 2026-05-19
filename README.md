@@ -8,6 +8,8 @@ It lets users, communities, platforms, and agents exchange verifiable public evi
 
 - `SPEC.md` — TIP 0.1 protocol draft
 - `CHANGELOG.md` — release notes
+- `CONTRIBUTING.md` — contributor guide
+- `SECURITY.md` — vulnerability reporting policy
 - `crates/tip-core` — pure domain model, ports, use-cases, and crypto primitives
 - `crates/tip-node` — lightweight HTTP node with SQLite event storage and explicit peer sync
 - `crates/tip-cli` — command-line client
