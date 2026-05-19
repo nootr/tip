@@ -150,6 +150,103 @@ fn cli_can_submit_batch_to_and_query_from_node() {
     );
     assert_eq!(evaluation["warnings"].as_array().unwrap().len(), 0);
 
+    let claim_type_only_policy = env.path("claim-type-only-policy.toml");
+    std::fs::write(
+        &claim_type_only_policy,
+        "[trust]\nrequired_claims = [{ claim_type = \"github\" }]\n",
+    )
+    .unwrap();
+    let claim_type_only = env.run_json(&[
+        "trust",
+        "evaluate",
+        public_key,
+        "--policy",
+        claim_type_only_policy.to_str().unwrap(),
+        "--node",
+        &base_url,
+    ]);
+    assert_eq!(claim_type_only["trusted"], true);
+    assert_eq!(
+        claim_type_only["matched_claims"].as_array().unwrap().len(),
+        1
+    );
+
+    let missing_claim_policy = env.path("missing-claim-policy.toml");
+    std::fs::write(
+        &missing_claim_policy,
+        "[trust]\nrequired_claims = [{ claim_type = \"domain\", value = \"example.com\" }]\n",
+    )
+    .unwrap();
+    let missing_claim = env.run_json(&[
+        "trust",
+        "evaluate",
+        public_key,
+        "--policy",
+        missing_claim_policy.to_str().unwrap(),
+        "--node",
+        &base_url,
+    ]);
+    assert_eq!(missing_claim["trusted"], false);
+    assert_eq!(missing_claim["matched_claims"].as_array().unwrap().len(), 0);
+    assert!(missing_claim["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|warning| warning.as_str().unwrap().contains("missing required claim")));
+
+    let untrusted_issuer_policy = env.path("untrusted-issuer-policy.toml");
+    std::fs::write(
+        &untrusted_issuer_policy,
+        "[trust]\ntrusted_issuers = [\"untrusted\"]\naccepted_attestations = [{ claim = \"trusted_contributor\" }]\n",
+    )
+    .unwrap();
+    let untrusted_issuer = env.run_json(&[
+        "trust",
+        "evaluate",
+        public_key,
+        "--policy",
+        untrusted_issuer_policy.to_str().unwrap(),
+        "--node",
+        &base_url,
+    ]);
+    assert_eq!(untrusted_issuer["trusted"], false);
+    assert_eq!(
+        untrusted_issuer["matched_attestations"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0
+    );
+    assert!(untrusted_issuer["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|warning| warning
+            .as_str()
+            .unwrap()
+            .contains("missing accepted attestation")));
+
+    let empty_policy = env.path("empty-policy.toml");
+    std::fs::write(&empty_policy, "[trust]\n").unwrap();
+    let empty_policy_evaluation = env.run_json(&[
+        "trust",
+        "evaluate",
+        public_key,
+        "--policy",
+        empty_policy.to_str().unwrap(),
+        "--node",
+        &base_url,
+    ]);
+    assert_eq!(empty_policy_evaluation["trusted"], false);
+    assert!(empty_policy_evaluation["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|warning| warning
+            .as_str()
+            .unwrap()
+            .contains("policy has no requirements")));
+
     let claims = env.run_json(&[
         "query",
         "claims",
