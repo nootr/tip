@@ -32,6 +32,12 @@ cargo install --path crates/tip-node
 
 Released binaries are published on GitHub Releases for Linux x86_64 and macOS arm64/x86_64.
 
+Verify downloaded release archives with the matching checksum file:
+
+```bash
+shasum -a 256 -c tip-x86_64-unknown-linux-gnu.tar.gz.sha256
+```
+
 ## Run a node
 
 Create a config from the example:

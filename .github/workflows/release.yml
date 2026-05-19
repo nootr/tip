@@ -53,17 +53,22 @@ jobs:
           cp "target/${{ matrix.target }}/release/tip-node" dist/package/tip-node
           cp README.md LICENSE SPEC.md tip-node.example.toml dist/package/
           tar -C dist/package -czf "dist/${{ matrix.archive }}" .
+          (cd dist && shasum -a 256 "${{ matrix.archive }}" > "${{ matrix.archive }}.sha256")
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.archive }}
-          path: dist/${{ matrix.archive }}
+          path: |
+            dist/${{ matrix.archive }}
+            dist/${{ matrix.archive }}.sha256
           if-no-files-found: error
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/${{ matrix.archive }}
+          files: |
+            dist/${{ matrix.archive }}
+            dist/${{ matrix.archive }}.sha256
           generate_release_notes: true
