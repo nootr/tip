@@ -21,6 +21,7 @@ This project uses pre-1.0 alpha releases while the protocol and reference implem
 - TIP bundle format documented in `SPEC.md`.
 - `tip trust evaluate --bundle` can infer the subject from the bundle.
 - Bundle format test vector for `tip-bundle/0.1`.
+- Community node metadata in config and `/info` responses.
 
 ## v0.1.0-alpha.2 - 2026-05-19
 

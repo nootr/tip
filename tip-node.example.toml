@@ -2,6 +2,10 @@
 bind = "127.0.0.1:8080"
 db = "tip-node.sqlite3"
 key = "tip-node-key.json"
+name = "Local TIP Node"
+description = "A TIP node for local/community trust evidence"
+website = "https://example.com"
+contact = "mailto:admin@example.com"
 
 [sync]
 on_start = false

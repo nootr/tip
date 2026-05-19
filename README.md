@@ -63,6 +63,12 @@ Or with Cargo during development:
 cargo run -p tip-node -- serve --config tip-node.toml
 ```
 
+Why run a node?
+
+- host a community trust registry for maintainers, contributors, members, or agents
+- mirror public trust evidence so your workflows do not depend on one upstream node
+- provide a local policy/cache layer for CI, agents, and audits
+
 The node exposes:
 
 - `GET /health`
@@ -82,6 +88,10 @@ The node exposes:
 bind = "127.0.0.1:8080"
 db = "tip-node.sqlite3"
 key = "tip-node-key.json"
+name = "Local TIP Node"
+description = "A TIP node for local/community trust evidence"
+website = "https://example.com"
+contact = "mailto:admin@example.com"
 
 [sync]
 on_start = false

@@ -17,17 +17,30 @@ use tip_core::{
     use_cases, EventFilter, SignedEvent, PROTOCOL_VERSION,
 };
 
-use crate::adapters::sqlite_event_store::SqliteEventStore;
+use crate::{adapters::sqlite_event_store::SqliteEventStore, config::NodeMetadata};
 
 #[derive(Clone)]
 pub struct AppState {
     node_key: Ed25519Keypair,
     store: Arc<Mutex<SqliteEventStore>>,
+    metadata: NodeMetadata,
 }
 
 impl AppState {
     pub fn new(node_key: Ed25519Keypair, store: Arc<Mutex<SqliteEventStore>>) -> Self {
-        Self { node_key, store }
+        Self::new_with_metadata(node_key, store, NodeMetadata::default())
+    }
+
+    pub fn new_with_metadata(
+        node_key: Ed25519Keypair,
+        store: Arc<Mutex<SqliteEventStore>>,
+        metadata: NodeMetadata,
+    ) -> Self {
+        Self {
+            node_key,
+            store,
+            metadata,
+        }
     }
 }
 
@@ -57,6 +70,10 @@ async fn info(State(state): State<AppState>) -> Json<InfoResponse> {
         node_public_key: state.node_key.public_key(),
         version: env!("CARGO_PKG_VERSION"),
         protocol_version: PROTOCOL_VERSION,
+        name: state.metadata.name,
+        description: state.metadata.description,
+        website: state.metadata.website,
+        contact: state.metadata.contact,
     })
 }
 
@@ -223,6 +240,10 @@ struct InfoResponse {
     node_public_key: String,
     version: &'static str,
     protocol_version: &'static str,
+    name: Option<String>,
+    description: Option<String>,
+    website: Option<String>,
+    contact: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

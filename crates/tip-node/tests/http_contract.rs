@@ -20,6 +20,7 @@ use tip_core::{
 };
 use tip_node::{
     adapters::sqlite_event_store::SqliteEventStore,
+    config::NodeMetadata,
     http::{router, AppState},
 };
 use tower::ServiceExt;
@@ -60,6 +61,16 @@ impl TestDb {
         let store = SqliteEventStore::open(self.path.to_str().unwrap()).unwrap();
         router(AppState::new(node_key, Arc::new(Mutex::new(store))))
     }
+
+    fn app_with_metadata(&self, metadata: NodeMetadata) -> Router {
+        let node_key = Ed25519Keypair::generate();
+        let store = SqliteEventStore::open(self.path.to_str().unwrap()).unwrap();
+        router(AppState::new_with_metadata(
+            node_key,
+            Arc::new(Mutex::new(store)),
+            metadata,
+        ))
+    }
 }
 
 impl Drop for TestDb {
@@ -85,7 +96,12 @@ async fn health_returns_ok() {
 async fn info_returns_node_metadata() {
     let db = TestDb::new();
     let response = db
-        .app()
+        .app_with_metadata(NodeMetadata {
+            name: Some("Local TIP Node".to_string()),
+            description: Some("Community trust registry".to_string()),
+            website: Some("https://example.com".to_string()),
+            contact: Some("mailto:admin@example.com".to_string()),
+        })
         .oneshot(request(Method::GET, "/info", Body::empty()))
         .await
         .unwrap();
@@ -95,6 +111,10 @@ async fn info_returns_node_metadata() {
     assert_eq!(body["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(body["protocol_version"], "tip/0.1");
     assert!(body["node_public_key"].as_str().unwrap().len() > 40);
+    assert_eq!(body["name"], "Local TIP Node");
+    assert_eq!(body["description"], "Community trust registry");
+    assert_eq!(body["website"], "https://example.com");
+    assert_eq!(body["contact"], "mailto:admin@example.com");
 }
 
 #[tokio::test]

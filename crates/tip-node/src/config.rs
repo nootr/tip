@@ -16,6 +16,10 @@ pub struct RuntimeNodeConfig {
     pub bind: Option<String>,
     pub db: Option<String>,
     pub key: Option<String>,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub website: Option<String>,
+    pub contact: Option<String>,
 }
 
 impl Default for RuntimeNodeConfig {
@@ -24,6 +28,10 @@ impl Default for RuntimeNodeConfig {
             bind: Some("127.0.0.1:8080".to_string()),
             db: Some("tip-node.sqlite3".to_string()),
             key: Some("tip-node-key.json".to_string()),
+            name: None,
+            description: None,
+            website: None,
+            contact: None,
         }
     }
 }
@@ -49,6 +57,25 @@ impl Default for SyncConfig {
 pub struct PeerConfig {
     #[serde(default)]
     pub urls: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NodeMetadata {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub website: Option<String>,
+    pub contact: Option<String>,
+}
+
+impl RuntimeNodeConfig {
+    pub fn metadata(&self) -> NodeMetadata {
+        NodeMetadata {
+            name: self.name.clone(),
+            description: self.description.clone(),
+            website: self.website.clone(),
+            contact: self.contact.clone(),
+        }
+    }
 }
 
 impl NodeConfig {

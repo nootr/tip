@@ -107,7 +107,11 @@ async fn serve(command: ServeCommand) -> anyhow::Result<()> {
         );
     }
 
-    let state = AppState::new(node_key, Arc::new(Mutex::new(store)));
+    let metadata = config
+        .as_ref()
+        .map(|config| config.node.metadata())
+        .unwrap_or_default();
+    let state = AppState::new_with_metadata(node_key, Arc::new(Mutex::new(store)), metadata);
 
     let addr: SocketAddr = resolved.bind.parse().context("parse bind address")?;
     let listener = tokio::net::TcpListener::bind(addr).await?;

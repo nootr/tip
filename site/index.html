@@ -108,7 +108,7 @@
       <div class="section-heading">
         <p class="eyebrow">Reference node</p>
         <h2>Run a small HTTP node with peer sync.</h2>
-        <p>The Rust node stores events in SQLite, exposes a compact HTTP API, and can pull from explicitly configured peers.</p>
+        <p>The Rust node stores events in SQLite, exposes a compact HTTP API, and can pull from explicitly configured peers. Run one as a community registry, public evidence mirror, or local trust-policy cache.</p>
       </div>
       <div class="node-grid">
         <article class="panel">
@@ -117,6 +117,10 @@
 bind = "127.0.0.1:8080"
 db = "tip-node.sqlite3"
 key = "tip-node-key.json"
+name = "Local TIP Node"
+description = "Community trust registry"
+website = "https://example.com"
+contact = "mailto:admin@example.com"
 
 [sync]
 on_start = true
