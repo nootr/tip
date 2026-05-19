@@ -17,7 +17,7 @@ This project uses pre-1.0 alpha releases while the protocol and reference implem
 - `tip trust explain` command for summarizing active trust evidence for a subject.
 - `tip trust evaluate` command for client-side TOML trust policies.
 - Example `trust-policy.example.toml` included in release archives.
-- Portable active trust evidence bundles via `tip bundle create`, `tip bundle verify`, and `tip trust evaluate --bundle`; bundles include raw events and active projections.
+- Portable active trust evidence bundles via `tip bundle create`, `tip bundle verify`, and `tip trust evaluate --bundle`; bundles include raw events and active projections, with semantic projection verification.
 
 ## v0.1.0-alpha.2 - 2026-05-19
 

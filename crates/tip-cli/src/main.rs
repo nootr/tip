@@ -5,6 +5,7 @@ use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
+    collections::HashSet,
     fs,
     path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
@@ -452,6 +453,28 @@ impl EventBundle {
             }
         }
 
+        let expected_claims = active_bundle_events(
+            &self.events,
+            tip_core::EventType::ClaimAdded,
+            tip_core::EventType::ClaimRevoked,
+            "claim_id",
+        );
+        let expected_attestations = active_bundle_events(
+            &self.events,
+            tip_core::EventType::AttestationIssued,
+            tip_core::EventType::AttestationRevoked,
+            "attestation_id",
+        );
+
+        if event_ids(&self.active_claims) != event_ids(&expected_claims) {
+            anyhow::bail!("bundle active_claims do not match reconstructed active claims");
+        }
+        if event_ids(&self.active_attestations) != event_ids(&expected_attestations) {
+            anyhow::bail!(
+                "bundle active_attestations do not match reconstructed active attestations"
+            );
+        }
+
         Ok(())
     }
 
@@ -478,6 +501,30 @@ impl EventBundle {
                 .collect::<Result<_, _>>()?,
         })
     }
+}
+
+fn active_bundle_events(
+    events: &[SignedEvent],
+    active_kind: tip_core::EventType,
+    revoked_kind: tip_core::EventType,
+    reference_field: &str,
+) -> Vec<SignedEvent> {
+    let revoked_ids = events
+        .iter()
+        .filter(|event| event.unsigned.kind == revoked_kind)
+        .filter_map(|event| value_at(&event.unsigned.payload, &[reference_field]))
+        .collect::<HashSet<_>>();
+
+    events
+        .iter()
+        .filter(|event| event.unsigned.kind == active_kind)
+        .filter(|event| !revoked_ids.contains(event.id.as_str()))
+        .cloned()
+        .collect()
+}
+
+fn event_ids(events: &[SignedEvent]) -> HashSet<&str> {
+    events.iter().map(|event| event.id.as_str()).collect()
 }
 
 #[derive(Debug, Deserialize)]

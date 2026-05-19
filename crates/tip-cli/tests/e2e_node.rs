@@ -178,6 +178,19 @@ fn cli_can_submit_batch_to_and_query_from_node() {
     let verify_bundle = env.run_ok(&["bundle", "verify", bundle_path.to_str().unwrap()]);
     assert_eq!(String::from_utf8(verify_bundle).unwrap().trim(), "ok");
 
+    let mut tampered_bundle = bundle.clone();
+    tampered_bundle["active_claims"] = serde_json::json!([]);
+    let tampered_bundle_path = env.path("tampered-bundle.json");
+    std::fs::write(
+        &tampered_bundle_path,
+        serde_json::to_vec_pretty(&tampered_bundle).unwrap(),
+    )
+    .unwrap();
+    env.run_fail_contains(
+        &["bundle", "verify", tampered_bundle_path.to_str().unwrap()],
+        "bundle active_claims do not match reconstructed active claims",
+    );
+
     let bundle_evaluation = env.run_json(&[
         "trust",
         "evaluate",
@@ -378,6 +391,16 @@ impl E2eEnv {
             .get_output()
             .stdout
             .clone()
+    }
+
+    fn run_fail_contains(&self, args: &[&str], expected_stderr: &str) {
+        AssertCommand::cargo_bin("tip")
+            .unwrap()
+            .env("XDG_CONFIG_HOME", self.temp_dir.path().join("config"))
+            .args(args)
+            .assert()
+            .failure()
+            .stderr(predicates::str::contains(expected_stderr));
     }
 }
 
