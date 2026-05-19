@@ -418,6 +418,7 @@ struct ActiveEvidence {
 struct EventBundle {
     version: String,
     subject: String,
+    events: Vec<SignedEvent>,
     active_claims: Vec<SignedEvent>,
     active_attestations: Vec<SignedEvent>,
 }
@@ -428,11 +429,7 @@ impl EventBundle {
             anyhow::bail!("unsupported bundle version {}", self.version);
         }
 
-        for event in self
-            .active_claims
-            .iter()
-            .chain(self.active_attestations.iter())
-        {
+        for event in self.events.iter() {
             if event.unsigned.subject != self.subject {
                 anyhow::bail!(
                     "bundle event {} subject does not match bundle subject",
@@ -440,6 +437,19 @@ impl EventBundle {
                 );
             }
             use_cases::verify_event(event, &Ed25519Verifier)?;
+        }
+
+        for projected in self
+            .active_claims
+            .iter()
+            .chain(self.active_attestations.iter())
+        {
+            if !self.events.iter().any(|event| event == projected) {
+                anyhow::bail!(
+                    "projected event {} is not present in bundle events",
+                    projected.id
+                );
+            }
         }
 
         Ok(())
@@ -513,6 +523,9 @@ fn fetch_active_evidence(node: &str, subject: &str) -> anyhow::Result<ActiveEvid
 fn create_bundle(node: &str, subject: &str) -> anyhow::Result<EventBundle> {
     let base = node.trim_end_matches('/');
     let encoded_subject = url_encode(subject);
+    let events = reqwest::blocking::get(format!("{base}/identities/{encoded_subject}/events"))?
+        .error_for_status()?
+        .json()?;
     let active_claims =
         reqwest::blocking::get(format!("{base}/identities/{encoded_subject}/claims"))?
             .error_for_status()?
@@ -525,6 +538,7 @@ fn create_bundle(node: &str, subject: &str) -> anyhow::Result<EventBundle> {
     Ok(EventBundle {
         version: "tip-bundle/0.1".to_string(),
         subject: subject.to_string(),
+        events,
         active_claims,
         active_attestations,
     })

@@ -164,8 +164,17 @@ fn cli_can_submit_batch_to_and_query_from_node() {
     let bundle = read_json(&bundle_path);
     assert_eq!(bundle["version"], "tip-bundle/0.1");
     assert_eq!(bundle["subject"], public_key);
+    assert_eq!(bundle["events"].as_array().unwrap().len(), 3);
     assert_eq!(bundle["active_claims"].as_array().unwrap().len(), 1);
     assert_eq!(bundle["active_attestations"].as_array().unwrap().len(), 1);
+    let event_ids = bundle["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|event| event["id"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert!(event_ids.contains(&bundle["active_claims"][0]["id"].as_str().unwrap()));
+    assert!(event_ids.contains(&bundle["active_attestations"][0]["id"].as_str().unwrap()));
     let verify_bundle = env.run_ok(&["bundle", "verify", bundle_path.to_str().unwrap()]);
     assert_eq!(String::from_utf8(verify_bundle).unwrap().trim(), "ok");
 
