@@ -133,6 +133,8 @@ Query events:
 
 ```bash
 tip query --subject <public-key> --limit 100 --node http://127.0.0.1:8080
+tip query claims --subject <public-key> --node http://127.0.0.1:8080
+tip query attestations --subject <public-key> --node http://127.0.0.1:8080
 ```
 
 Use cursor pagination:

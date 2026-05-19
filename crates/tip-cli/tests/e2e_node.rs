@@ -100,6 +100,28 @@ fn cli_can_submit_batch_to_and_query_from_node() {
         .any(|event| event["type"] == "identity.created"));
     assert!(events.iter().any(|event| event["type"] == "claim.added"));
 
+    let claims = env.run_json(&[
+        "query",
+        "claims",
+        "--subject",
+        public_key,
+        "--node",
+        &base_url,
+    ]);
+    let claims = claims.as_array().unwrap();
+    assert_eq!(claims.len(), 1);
+    assert_eq!(claims[0]["type"], "claim.added");
+
+    let attestations = env.run_json(&[
+        "query",
+        "attestations",
+        "--subject",
+        public_key,
+        "--node",
+        &base_url,
+    ]);
+    assert_eq!(attestations.as_array().unwrap().len(), 0);
+
     let first_page = env.run_json(&[
         "query",
         "--subject",

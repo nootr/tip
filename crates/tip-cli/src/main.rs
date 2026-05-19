@@ -129,6 +129,20 @@ struct EventSubmitBatch {
 
 #[derive(Args)]
 struct QueryCommand {
+    #[command(subcommand)]
+    command: Option<QuerySubcommand>,
+    #[command(flatten)]
+    events: QueryEventsArgs,
+}
+
+#[derive(Subcommand)]
+enum QuerySubcommand {
+    Claims(IdentityProjectionQuery),
+    Attestations(IdentityProjectionQuery),
+}
+
+#[derive(Args)]
+struct QueryEventsArgs {
     #[arg(long, allow_hyphen_values = true)]
     subject: Option<String>,
     #[arg(long, allow_hyphen_values = true)]
@@ -141,6 +155,14 @@ struct QueryCommand {
     after_id: Option<String>,
     #[arg(long)]
     limit: Option<usize>,
+    #[arg(long, default_value = "http://127.0.0.1:8080")]
+    node: String,
+}
+
+#[derive(Args)]
+struct IdentityProjectionQuery {
+    #[arg(long, allow_hyphen_values = true)]
+    subject: String,
     #[arg(long, default_value = "http://127.0.0.1:8080")]
     node: String,
 }
@@ -244,39 +266,61 @@ fn main() -> anyhow::Result<()> {
             let accepted: Value = response.json()?;
             println!("{}", serde_json::to_string_pretty(&accepted)?);
         }
-        Command::Query(args) => {
-            let mut url = format!("{}/events", args.node.trim_end_matches('/'));
-            let mut query = Vec::new();
-            if let Some(subject) = args.subject {
-                query.push(("subject", subject));
+        Command::Query(args) => match args.command {
+            Some(QuerySubcommand::Claims(query)) => {
+                let url = format!(
+                    "{}/identities/{}/claims",
+                    query.node.trim_end_matches('/'),
+                    url_encode(&query.subject)
+                );
+                let claims: Value = reqwest::blocking::get(url)?.error_for_status()?.json()?;
+                println!("{}", serde_json::to_string_pretty(&claims)?);
             }
-            if let Some(issuer) = args.issuer {
-                query.push(("issuer", issuer));
+            Some(QuerySubcommand::Attestations(query)) => {
+                let url = format!(
+                    "{}/identities/{}/attestations",
+                    query.node.trim_end_matches('/'),
+                    url_encode(&query.subject)
+                );
+                let attestations: Value =
+                    reqwest::blocking::get(url)?.error_for_status()?.json()?;
+                println!("{}", serde_json::to_string_pretty(&attestations)?);
             }
-            if let Some(kind) = args.kind {
-                query.push(("type", kind));
+            None => {
+                let args = args.events;
+                let mut url = format!("{}/events", args.node.trim_end_matches('/'));
+                let mut query = Vec::new();
+                if let Some(subject) = args.subject {
+                    query.push(("subject", subject));
+                }
+                if let Some(issuer) = args.issuer {
+                    query.push(("issuer", issuer));
+                }
+                if let Some(kind) = args.kind {
+                    query.push(("type", kind));
+                }
+                if let Some(after_created_at) = args.after_created_at {
+                    query.push(("after_created_at", after_created_at.to_string()));
+                }
+                if let Some(after_id) = args.after_id {
+                    query.push(("after_id", after_id));
+                }
+                if let Some(limit) = args.limit {
+                    query.push(("limit", limit.to_string()));
+                }
+                if !query.is_empty() {
+                    let encoded = query
+                        .into_iter()
+                        .map(|(k, v)| format!("{}={}", k, url_encode(&v)))
+                        .collect::<Vec<_>>()
+                        .join("&");
+                    url.push('?');
+                    url.push_str(&encoded);
+                }
+                let events: Value = reqwest::blocking::get(url)?.error_for_status()?.json()?;
+                println!("{}", serde_json::to_string_pretty(&events)?);
             }
-            if let Some(after_created_at) = args.after_created_at {
-                query.push(("after_created_at", after_created_at.to_string()));
-            }
-            if let Some(after_id) = args.after_id {
-                query.push(("after_id", after_id));
-            }
-            if let Some(limit) = args.limit {
-                query.push(("limit", limit.to_string()));
-            }
-            if !query.is_empty() {
-                let encoded = query
-                    .into_iter()
-                    .map(|(k, v)| format!("{}={}", k, url_encode(&v)))
-                    .collect::<Vec<_>>()
-                    .join("&");
-                url.push('?');
-                url.push_str(&encoded);
-            }
-            let events: Value = reqwest::blocking::get(url)?.error_for_status()?.json()?;
-            println!("{}", serde_json::to_string_pretty(&events)?);
-        }
+        },
     }
 
     Ok(())

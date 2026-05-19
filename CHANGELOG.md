@@ -13,6 +13,7 @@ This project uses pre-1.0 alpha releases while the protocol and reference implem
 - Read-only `POST /events/validate` node endpoint.
 - `tip event validate` CLI command for node-side validation without publishing.
 - Active claim and attestation projection use-cases and node endpoints.
+- CLI query commands for active claims and attestations.
 
 ## v0.1.0-alpha.2 - 2026-05-19
 

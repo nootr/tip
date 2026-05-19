@@ -106,6 +106,13 @@ fn query_command_exposes_cursor_flags() {
     assert!(help.contains("--after-created-at"));
     assert!(help.contains("--after-id"));
     assert!(help.contains("--limit"));
+    assert!(help.contains("claims"));
+    assert!(help.contains("attestations"));
+
+    let claims = String::from_utf8(env.run_ok(&["query", "claims", "--help"])).unwrap();
+    assert!(claims.contains("Usage: tip query claims"));
+    assert!(claims.contains("--subject"));
+    assert!(claims.contains("--node"));
 }
 
 #[test]
