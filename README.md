@@ -139,6 +139,9 @@ tip query claims --subject <public-key> --node http://127.0.0.1:8080
 tip query attestations --subject <public-key> --node http://127.0.0.1:8080
 tip trust explain <public-key> --node http://127.0.0.1:8080
 tip trust evaluate <public-key> --policy trust-policy.example.toml --node http://127.0.0.1:8080
+tip bundle create --subject <public-key> --out bundle.json --node http://127.0.0.1:8080
+tip bundle verify bundle.json
+tip trust evaluate <public-key> --policy trust-policy.example.toml --bundle bundle.json
 ```
 
 See `trust-policy.example.toml` for a documented policy template.

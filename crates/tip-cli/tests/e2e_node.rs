@@ -150,6 +150,43 @@ fn cli_can_submit_batch_to_and_query_from_node() {
     );
     assert_eq!(evaluation["warnings"].as_array().unwrap().len(), 0);
 
+    let bundle_path = env.path("bundle.json");
+    env.run_ok(&[
+        "bundle",
+        "create",
+        "--subject",
+        public_key,
+        "--out",
+        bundle_path.to_str().unwrap(),
+        "--node",
+        &base_url,
+    ]);
+    let bundle = read_json(&bundle_path);
+    assert_eq!(bundle["version"], "tip-bundle/0.1");
+    assert_eq!(bundle["subject"], public_key);
+    assert_eq!(bundle["active_claims"].as_array().unwrap().len(), 1);
+    assert_eq!(bundle["active_attestations"].as_array().unwrap().len(), 1);
+    let verify_bundle = env.run_ok(&["bundle", "verify", bundle_path.to_str().unwrap()]);
+    assert_eq!(String::from_utf8(verify_bundle).unwrap().trim(), "ok");
+
+    let bundle_evaluation = env.run_json(&[
+        "trust",
+        "evaluate",
+        public_key,
+        "--policy",
+        policy_path.to_str().unwrap(),
+        "--bundle",
+        bundle_path.to_str().unwrap(),
+    ]);
+    assert_eq!(bundle_evaluation["trusted"], true);
+    assert_eq!(
+        bundle_evaluation["matched_attestations"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+
     let claim_type_only_policy = env.path("claim-type-only-policy.toml");
     std::fs::write(
         &claim_type_only_policy,
@@ -388,6 +425,10 @@ impl Drop for NodeProcess {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+fn read_json(path: &Path) -> Value {
+    serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
 }
 
 fn free_port() -> u16 {

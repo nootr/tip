@@ -129,6 +129,19 @@ fn event_node_commands_are_available() {
 }
 
 #[test]
+fn bundle_commands_are_available() {
+    let env = CliEnv::new();
+    let create = String::from_utf8(env.run_ok(&["bundle", "create", "--help"])).unwrap();
+    assert!(create.contains("Usage: tip bundle create"));
+    assert!(create.contains("--subject"));
+    assert!(create.contains("--out"));
+    assert!(create.contains("--node"));
+
+    let verify = String::from_utf8(env.run_ok(&["bundle", "verify", "--help"])).unwrap();
+    assert!(verify.contains("Usage: tip bundle verify"));
+}
+
+#[test]
 fn trust_commands_are_available() {
     let env = CliEnv::new();
     let explain = String::from_utf8(env.run_ok(&["trust", "explain", "--help"])).unwrap();
@@ -138,6 +151,7 @@ fn trust_commands_are_available() {
     let evaluate = String::from_utf8(env.run_ok(&["trust", "evaluate", "--help"])).unwrap();
     assert!(evaluate.contains("Usage: tip trust evaluate"));
     assert!(evaluate.contains("--policy"));
+    assert!(evaluate.contains("--bundle"));
     assert!(evaluate.contains("--node"));
 }
 

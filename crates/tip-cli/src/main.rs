@@ -2,7 +2,7 @@ mod file_key_store;
 
 use anyhow::Context;
 use clap::{Args, Parser, Subcommand};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
     fs,
@@ -34,6 +34,8 @@ enum Command {
     Event(EventCommand),
     #[command(subcommand)]
     Trust(TrustCommand),
+    #[command(subcommand)]
+    Bundle(BundleCommand),
     Query(QueryCommand),
 }
 
@@ -130,8 +132,26 @@ struct TrustEvaluate {
     subject: String,
     #[arg(long)]
     policy: PathBuf,
+    #[arg(long)]
+    bundle: Option<PathBuf>,
     #[arg(long, default_value = "http://127.0.0.1:8080")]
     node: String,
+}
+
+#[derive(Subcommand)]
+enum BundleCommand {
+    Create(BundleCreate),
+    Verify(EventFile),
+}
+
+#[derive(Args)]
+struct BundleCreate {
+    #[arg(long, allow_hyphen_values = true)]
+    subject: String,
+    #[arg(long, default_value = "http://127.0.0.1:8080")]
+    node: String,
+    #[arg(long)]
+    out: Option<PathBuf>,
 }
 
 #[derive(Args)]
@@ -312,9 +332,21 @@ fn main() -> anyhow::Result<()> {
         }
         Command::Trust(TrustCommand::Evaluate(args)) => {
             let policy = TrustPolicy::load(&args.policy)?;
-            let evidence = fetch_active_evidence(&args.node, &args.subject)?;
+            let evidence = match &args.bundle {
+                Some(path) => read_bundle(path)?.into_evidence_for_subject(&args.subject)?,
+                None => fetch_active_evidence(&args.node, &args.subject)?,
+            };
             let evaluation = evaluate_trust(&args.subject, &policy.trust, evidence);
             println!("{}", serde_json::to_string_pretty(&evaluation)?);
+        }
+        Command::Bundle(BundleCommand::Create(args)) => {
+            let bundle = create_bundle(&args.node, &args.subject)?;
+            write_json(&bundle, args.out)?;
+        }
+        Command::Bundle(BundleCommand::Verify(args)) => {
+            let bundle = read_bundle(&args.path)?;
+            bundle.verify()?;
+            println!("ok");
         }
         Command::Query(args) => match args.command {
             Some(QuerySubcommand::Claims(query)) => {
@@ -382,6 +414,62 @@ struct ActiveEvidence {
     attestations: Vec<Value>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct EventBundle {
+    version: String,
+    subject: String,
+    active_claims: Vec<SignedEvent>,
+    active_attestations: Vec<SignedEvent>,
+}
+
+impl EventBundle {
+    fn verify(&self) -> anyhow::Result<()> {
+        if self.version != "tip-bundle/0.1" {
+            anyhow::bail!("unsupported bundle version {}", self.version);
+        }
+
+        for event in self
+            .active_claims
+            .iter()
+            .chain(self.active_attestations.iter())
+        {
+            if event.unsigned.subject != self.subject {
+                anyhow::bail!(
+                    "bundle event {} subject does not match bundle subject",
+                    event.id
+                );
+            }
+            use_cases::verify_event(event, &Ed25519Verifier)?;
+        }
+
+        Ok(())
+    }
+
+    fn into_evidence_for_subject(self, subject: &str) -> anyhow::Result<ActiveEvidence> {
+        if self.subject != subject {
+            anyhow::bail!(
+                "bundle subject {} does not match requested subject {}",
+                self.subject,
+                subject
+            );
+        }
+        self.verify()?;
+
+        Ok(ActiveEvidence {
+            claims: self
+                .active_claims
+                .into_iter()
+                .map(serde_json::to_value)
+                .collect::<Result<_, _>>()?,
+            attestations: self
+                .active_attestations
+                .into_iter()
+                .map(serde_json::to_value)
+                .collect::<Result<_, _>>()?,
+        })
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct TrustPolicy {
     #[serde(default)]
@@ -418,18 +506,27 @@ struct AttestationRequirement {
 }
 
 fn fetch_active_evidence(node: &str, subject: &str) -> anyhow::Result<ActiveEvidence> {
-    let base = node.trim_end_matches('/');
-    let subject = url_encode(subject);
-    let claims = reqwest::blocking::get(format!("{base}/identities/{subject}/claims"))?
-        .error_for_status()?
-        .json()?;
-    let attestations = reqwest::blocking::get(format!("{base}/identities/{subject}/attestations"))?
-        .error_for_status()?
-        .json()?;
+    let bundle = create_bundle(node, subject)?;
+    bundle.into_evidence_for_subject(subject)
+}
 
-    Ok(ActiveEvidence {
-        claims,
-        attestations,
+fn create_bundle(node: &str, subject: &str) -> anyhow::Result<EventBundle> {
+    let base = node.trim_end_matches('/');
+    let encoded_subject = url_encode(subject);
+    let active_claims =
+        reqwest::blocking::get(format!("{base}/identities/{encoded_subject}/claims"))?
+            .error_for_status()?
+            .json()?;
+    let active_attestations =
+        reqwest::blocking::get(format!("{base}/identities/{encoded_subject}/attestations"))?
+            .error_for_status()?
+            .json()?;
+
+    Ok(EventBundle {
+        version: "tip-bundle/0.1".to_string(),
+        subject: subject.to_string(),
+        active_claims,
+        active_attestations,
     })
 }
 
@@ -521,8 +618,17 @@ fn read_event(path: &PathBuf) -> anyhow::Result<SignedEvent> {
     Ok(serde_json::from_str(&raw)?)
 }
 
+fn read_bundle(path: &PathBuf) -> anyhow::Result<EventBundle> {
+    let raw = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    Ok(serde_json::from_str(&raw)?)
+}
+
 fn write_event(event: &SignedEvent, out: Option<PathBuf>) -> anyhow::Result<()> {
-    let raw = serde_json::to_string_pretty(event)?;
+    write_json(event, out)
+}
+
+fn write_json(value: &impl serde::Serialize, out: Option<PathBuf>) -> anyhow::Result<()> {
+    let raw = serde_json::to_string_pretty(value)?;
     match out {
         Some(path) => fs::write(&path, raw).with_context(|| format!("write {}", path.display()))?,
         None => println!("{}", raw),
