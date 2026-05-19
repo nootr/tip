@@ -268,6 +268,40 @@ OR (created_at = after_created_at AND id > after_id)
 
 Nodes default to `limit=500` when no limit is provided.
 
+## Bundles
+
+A TIP bundle is a portable transport artifact for moving verifiable evidence between nodes, clients, agents, and offline workflows. A bundle is not itself a signed TIP event and does not replace the append-only event log.
+
+TIP 0.1 bundles use `version = "tip-bundle/0.1"` and contain:
+
+```json
+{
+  "version": "tip-bundle/0.1",
+  "subject": "<subject-public-key>",
+  "events": [],
+  "active_claims": [],
+  "active_attestations": []
+}
+```
+
+Fields:
+
+- `subject`: subject public key for the bundled evidence
+- `events`: signed TIP events for the subject, including raw event-log context such as revocations
+- `active_claims`: active `claim.added` projection for the subject
+- `active_attestations`: active `attestation.issued` projection for the subject
+
+Bundle validation MUST verify:
+
+- supported bundle version
+- every event in `events` has `subject` equal to bundle `subject`
+- every event in `events` passes normal TIP event ID, shape, and signature verification
+- every event in `active_claims` and `active_attestations` is present in `events`
+- `active_claims` exactly matches the active claim projection reconstructed from `events`
+- `active_attestations` exactly matches the active attestation projection reconstructed from `events`
+
+Bundles MAY be submitted to nodes by submitting their `events` array through normal event ingestion, for example `POST /events/batch`. Nodes still apply normal validation and may reject invalid or conflicting events.
+
 ## Peer sync
 
 TIP 0.1 sync is intentionally simple and implementation-level. The protocol primitives are:
