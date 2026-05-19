@@ -158,6 +158,9 @@ pub fn submit_event(
     event: &SignedEvent,
 ) -> Result<(), UseCaseError> {
     verify_event(event, verifier)?;
+    if event_already_stored(store, event)? {
+        return Ok(());
+    }
     validate_event_references(store, event)?;
     store.append(event)?;
     Ok(())
@@ -225,6 +228,24 @@ pub fn query_events(
     filter: &EventFilter,
 ) -> Result<Vec<SignedEvent>, UseCaseError> {
     Ok(store.query(filter)?)
+}
+
+fn event_already_stored(
+    store: &impl EventStore,
+    event: &SignedEvent,
+) -> Result<bool, UseCaseError> {
+    let Some(existing) = store.get(&event.id)? else {
+        return Ok(false);
+    };
+
+    if existing == *event {
+        Ok(true)
+    } else {
+        Err(invalid_event(format!(
+            "event id conflict: stored event {} differs from submitted event",
+            event.id
+        )))
+    }
 }
 
 fn require_referenced_event(
@@ -437,6 +458,19 @@ mod tests {
         assert!(events
             .iter()
             .any(|event| event.unsigned.kind == EventType::ClaimAdded));
+    }
+
+    #[test]
+    fn submit_event_rejects_same_id_with_different_content() {
+        let keypair = Ed25519Keypair::generate();
+        let store = InMemoryEventStore::new();
+        let event = create_identity(&FixedClock, &keypair).unwrap();
+        let mut conflicting = event.clone();
+        conflicting.signature = "different-signature".to_string();
+        store.append(&conflicting).unwrap();
+
+        let error = submit_event(&store, &Ed25519Verifier, &event).unwrap_err();
+        assert!(error.to_string().contains("event id conflict"));
     }
 
     #[test]

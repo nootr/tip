@@ -15,7 +15,7 @@ use std::{
 };
 use tip_core::{
     crypto::Ed25519Keypair,
-    ports::{Clock, Signer},
+    ports::{Clock, EventStore, Signer},
     use_cases, SignedEvent,
 };
 use tip_node::{
@@ -197,6 +197,30 @@ async fn post_events_batch_is_idempotent_for_duplicates() {
     let events: Vec<SignedEvent> = serde_json::from_value(json_body(query).await).unwrap();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].id, event.id);
+}
+
+#[tokio::test]
+async fn post_event_rejects_same_id_with_different_stored_content() {
+    let db = TestDb::new();
+    let signer = Ed25519Keypair::generate();
+    let event = use_cases::create_identity(&FixedClock, &signer).unwrap();
+    let mut conflicting = event.clone();
+    conflicting.signature = "different-signature".to_string();
+
+    let store = SqliteEventStore::open(db.path.to_str().unwrap()).unwrap();
+    store.append(&conflicting).unwrap();
+
+    let response = db
+        .app()
+        .oneshot(json_request(Method::POST, "/events", &event))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert!(json_body(response).await["error"]
+        .as_str()
+        .unwrap()
+        .contains("event id conflict"));
 }
 
 #[tokio::test]

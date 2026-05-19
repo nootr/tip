@@ -207,7 +207,7 @@ Nodes MUST NOT treat external claims as true merely because the event is valid.
 }
 ```
 
-Batch submission is idempotent: submitting an already stored valid event is still accepted and does not create a duplicate.
+Batch submission is idempotent: submitting an already stored valid event is still accepted and does not create a duplicate. If a node already stores an event with the same `id` but different event content, it MUST reject the submitted event as an ID conflict.
 
 ### Event listing cursor
 
