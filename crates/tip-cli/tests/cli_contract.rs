@@ -129,12 +129,16 @@ fn event_node_commands_are_available() {
 }
 
 #[test]
-fn trust_explain_command_is_available() {
+fn trust_commands_are_available() {
     let env = CliEnv::new();
     let explain = String::from_utf8(env.run_ok(&["trust", "explain", "--help"])).unwrap();
-
     assert!(explain.contains("Usage: tip trust explain"));
     assert!(explain.contains("--node"));
+
+    let evaluate = String::from_utf8(env.run_ok(&["trust", "evaluate", "--help"])).unwrap();
+    assert!(evaluate.contains("Usage: tip trust evaluate"));
+    assert!(evaluate.contains("--policy"));
+    assert!(evaluate.contains("--node"));
 }
 
 struct CliEnv {

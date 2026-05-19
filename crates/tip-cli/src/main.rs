@@ -2,6 +2,7 @@ mod file_key_store;
 
 use anyhow::Context;
 use clap::{Args, Parser, Subcommand};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
     fs,
@@ -112,12 +113,23 @@ enum EventCommand {
 #[derive(Subcommand)]
 enum TrustCommand {
     Explain(TrustExplain),
+    Evaluate(TrustEvaluate),
 }
 
 #[derive(Args)]
 struct TrustExplain {
     #[arg(allow_hyphen_values = true)]
     subject: String,
+    #[arg(long, default_value = "http://127.0.0.1:8080")]
+    node: String,
+}
+
+#[derive(Args)]
+struct TrustEvaluate {
+    #[arg(allow_hyphen_values = true)]
+    subject: String,
+    #[arg(long)]
+    policy: PathBuf,
     #[arg(long, default_value = "http://127.0.0.1:8080")]
     node: String,
 }
@@ -282,30 +294,27 @@ fn main() -> anyhow::Result<()> {
             println!("{}", serde_json::to_string_pretty(&accepted)?);
         }
         Command::Trust(TrustCommand::Explain(args)) => {
-            let base = args.node.trim_end_matches('/');
-            let subject = url_encode(&args.subject);
-            let claims: Value =
-                reqwest::blocking::get(format!("{base}/identities/{subject}/claims"))?
-                    .error_for_status()?
-                    .json()?;
-            let attestations: Value =
-                reqwest::blocking::get(format!("{base}/identities/{subject}/attestations"))?
-                    .error_for_status()?
-                    .json()?;
+            let evidence = fetch_active_evidence(&args.node, &args.subject)?;
             let mut warnings = Vec::new();
-            if claims.as_array().is_some_and(Vec::is_empty) {
+            if evidence.claims.is_empty() {
                 warnings.push("no active claims found");
             }
-            if attestations.as_array().is_some_and(Vec::is_empty) {
+            if evidence.attestations.is_empty() {
                 warnings.push("no active attestations found");
             }
             let explanation = json!({
                 "subject": args.subject,
-                "active_claims": claims,
-                "active_attestations": attestations,
+                "active_claims": evidence.claims,
+                "active_attestations": evidence.attestations,
                 "warnings": warnings,
             });
             println!("{}", serde_json::to_string_pretty(&explanation)?);
+        }
+        Command::Trust(TrustCommand::Evaluate(args)) => {
+            let policy = TrustPolicy::load(&args.policy)?;
+            let evidence = fetch_active_evidence(&args.node, &args.subject)?;
+            let evaluation = evaluate_trust(&args.subject, &policy.trust, evidence);
+            println!("{}", serde_json::to_string_pretty(&evaluation)?);
         }
         Command::Query(args) => match args.command {
             Some(QuerySubcommand::Claims(query)) => {
@@ -365,6 +374,146 @@ fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+#[derive(Debug)]
+struct ActiveEvidence {
+    claims: Vec<Value>,
+    attestations: Vec<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TrustPolicy {
+    #[serde(default)]
+    trust: TrustPolicyRules,
+}
+
+impl TrustPolicy {
+    fn load(path: &PathBuf) -> anyhow::Result<Self> {
+        let raw = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+        Ok(toml::from_str(&raw)?)
+    }
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct TrustPolicyRules {
+    #[serde(default)]
+    trusted_issuers: Vec<String>,
+    #[serde(default)]
+    required_claims: Vec<ClaimRequirement>,
+    #[serde(default)]
+    accepted_attestations: Vec<AttestationRequirement>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ClaimRequirement {
+    claim_type: String,
+    value: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AttestationRequirement {
+    claim: String,
+    issuer: Option<String>,
+}
+
+fn fetch_active_evidence(node: &str, subject: &str) -> anyhow::Result<ActiveEvidence> {
+    let base = node.trim_end_matches('/');
+    let subject = url_encode(subject);
+    let claims = reqwest::blocking::get(format!("{base}/identities/{subject}/claims"))?
+        .error_for_status()?
+        .json()?;
+    let attestations = reqwest::blocking::get(format!("{base}/identities/{subject}/attestations"))?
+        .error_for_status()?
+        .json()?;
+
+    Ok(ActiveEvidence {
+        claims,
+        attestations,
+    })
+}
+
+fn evaluate_trust(subject: &str, policy: &TrustPolicyRules, evidence: ActiveEvidence) -> Value {
+    let mut matched_claims = Vec::new();
+    let mut matched_attestations = Vec::new();
+    let mut warnings = Vec::new();
+
+    if policy.required_claims.is_empty() && policy.accepted_attestations.is_empty() {
+        warnings.push("policy has no requirements".to_string());
+    }
+
+    for requirement in &policy.required_claims {
+        match evidence
+            .claims
+            .iter()
+            .find(|claim| claim_matches(claim, requirement))
+        {
+            Some(claim) => matched_claims.push(claim.clone()),
+            None => warnings.push(format!(
+                "missing required claim: {}{}",
+                requirement.claim_type,
+                requirement
+                    .value
+                    .as_ref()
+                    .map(|value| format!("={value}"))
+                    .unwrap_or_default()
+            )),
+        }
+    }
+
+    for requirement in &policy.accepted_attestations {
+        match evidence.attestations.iter().find(|attestation| {
+            attestation_matches(attestation, requirement, &policy.trusted_issuers)
+        }) {
+            Some(attestation) => matched_attestations.push(attestation.clone()),
+            None => warnings.push(format!(
+                "missing accepted attestation from trusted issuer: {}",
+                requirement.claim
+            )),
+        }
+    }
+
+    json!({
+        "subject": subject,
+        "trusted": warnings.is_empty(),
+        "matched_claims": matched_claims,
+        "matched_attestations": matched_attestations,
+        "warnings": warnings,
+    })
+}
+
+fn claim_matches(claim: &Value, requirement: &ClaimRequirement) -> bool {
+    value_at(claim, &["payload", "claim_type"]) == Some(requirement.claim_type.as_str())
+        && requirement.value.as_deref().map_or(true, |value| {
+            value_at(claim, &["payload", "value"]) == Some(value)
+        })
+}
+
+fn attestation_matches(
+    attestation: &Value,
+    requirement: &AttestationRequirement,
+    trusted_issuers: &[String],
+) -> bool {
+    if value_at(attestation, &["payload", "claim"]) != Some(requirement.claim.as_str()) {
+        return false;
+    }
+
+    let Some(issuer) = value_at(attestation, &["issuer"]) else {
+        return false;
+    };
+
+    match requirement.issuer.as_deref() {
+        Some(required_issuer) => issuer == required_issuer,
+        None => trusted_issuers.iter().any(|trusted| trusted == issuer),
+    }
+}
+
+fn value_at<'a>(value: &'a Value, path: &[&str]) -> Option<&'a str> {
+    let mut current = value;
+    for segment in path {
+        current = current.get(*segment)?;
+    }
+    current.as_str()
 }
 
 fn read_event(path: &PathBuf) -> anyhow::Result<SignedEvent> {

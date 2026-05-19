@@ -136,6 +136,16 @@ tip query --subject <public-key> --limit 100 --node http://127.0.0.1:8080
 tip query claims --subject <public-key> --node http://127.0.0.1:8080
 tip query attestations --subject <public-key> --node http://127.0.0.1:8080
 tip trust explain <public-key> --node http://127.0.0.1:8080
+tip trust evaluate <public-key> --policy trust-policy.toml --node http://127.0.0.1:8080
+```
+
+Example trust policy:
+
+```toml
+[trust]
+trusted_issuers = ["<issuer-public-key>"]
+required_claims = [{ claim_type = "github" }]
+accepted_attestations = [{ claim = "trusted_contributor" }]
 ```
 
 Use cursor pagination:

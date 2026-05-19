@@ -123,6 +123,33 @@ fn cli_can_submit_batch_to_and_query_from_node() {
     );
     assert_eq!(explanation["warnings"].as_array().unwrap().len(), 0);
 
+    let policy_path = env.path("trust-policy.toml");
+    std::fs::write(
+        &policy_path,
+        format!(
+            "[trust]\ntrusted_issuers = [\"{}\"]\nrequired_claims = [{{ claim_type = \"github\", value = \"joris\" }}]\naccepted_attestations = [{{ claim = \"trusted_contributor\" }}]\n",
+            public_key
+        ),
+    )
+    .unwrap();
+    let evaluation = env.run_json(&[
+        "trust",
+        "evaluate",
+        public_key,
+        "--policy",
+        policy_path.to_str().unwrap(),
+        "--node",
+        &base_url,
+    ]);
+    assert_eq!(evaluation["subject"], public_key);
+    assert_eq!(evaluation["trusted"], true);
+    assert_eq!(evaluation["matched_claims"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        evaluation["matched_attestations"].as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(evaluation["warnings"].as_array().unwrap().len(), 0);
+
     let claims = env.run_json(&[
         "query",
         "claims",

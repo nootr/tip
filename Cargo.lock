@@ -1611,6 +1611,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tip-core",
+ "toml",
 ]
 
 [[package]]

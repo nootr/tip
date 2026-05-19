@@ -15,6 +15,7 @@ This project uses pre-1.0 alpha releases while the protocol and reference implem
 - Active claim and attestation projection use-cases and node endpoints.
 - CLI query commands for active claims and attestations.
 - `tip trust explain` command for summarizing active trust evidence for a subject.
+- `tip trust evaluate` command for client-side TOML trust policies.
 
 ## v0.1.0-alpha.2 - 2026-05-19
 
