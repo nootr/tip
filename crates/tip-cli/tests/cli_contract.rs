@@ -139,6 +139,10 @@ fn bundle_commands_are_available() {
 
     let verify = String::from_utf8(env.run_ok(&["bundle", "verify", "--help"])).unwrap();
     assert!(verify.contains("Usage: tip bundle verify"));
+
+    let submit = String::from_utf8(env.run_ok(&["bundle", "submit", "--help"])).unwrap();
+    assert!(submit.contains("Usage: tip bundle submit"));
+    assert!(submit.contains("--node"));
 }
 
 #[test]

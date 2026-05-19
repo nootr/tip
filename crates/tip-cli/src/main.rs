@@ -143,6 +143,7 @@ struct TrustEvaluate {
 enum BundleCommand {
     Create(BundleCreate),
     Verify(EventFile),
+    Submit(BundleSubmit),
 }
 
 #[derive(Args)]
@@ -153,6 +154,13 @@ struct BundleCreate {
     node: String,
     #[arg(long)]
     out: Option<PathBuf>,
+}
+
+#[derive(Args)]
+struct BundleSubmit {
+    path: PathBuf,
+    #[arg(long, default_value = "http://127.0.0.1:8080")]
+    node: String,
 }
 
 #[derive(Args)]
@@ -348,6 +356,19 @@ fn main() -> anyhow::Result<()> {
             let bundle = read_bundle(&args.path)?;
             bundle.verify()?;
             println!("ok");
+        }
+        Command::Bundle(BundleCommand::Submit(args)) => {
+            let bundle = read_bundle(&args.path)?;
+            bundle.verify()?;
+            let url = format!("{}/events/batch", args.node.trim_end_matches('/'));
+            let client = reqwest::blocking::Client::new();
+            let response = client
+                .post(url)
+                .json(&bundle.events)
+                .send()?
+                .error_for_status()?;
+            let submitted: Value = response.json()?;
+            println!("{}", serde_json::to_string_pretty(&submitted)?);
         }
         Command::Query(args) => match args.command {
             Some(QuerySubcommand::Claims(query)) => {

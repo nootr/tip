@@ -209,6 +209,26 @@ fn cli_can_submit_batch_to_and_query_from_node() {
         1
     );
 
+    let imported_node = NodeProcess::start(env.temp_dir.path());
+    let submit_bundle = env.run_json(&[
+        "bundle",
+        "submit",
+        bundle_path.to_str().unwrap(),
+        "--node",
+        &imported_node.base_url,
+    ]);
+    assert_eq!(submit_bundle["accepted"], 3);
+    assert_eq!(submit_bundle["rejected"], 0);
+    let imported_query = env.run_json(&[
+        "query",
+        "--subject",
+        public_key,
+        "--node",
+        &imported_node.base_url,
+    ]);
+    assert_eq!(imported_query.as_array().unwrap().len(), 3);
+    drop(imported_node);
+
     let claim_type_only_policy = env.path("claim-type-only-policy.toml");
     std::fs::write(
         &claim_type_only_policy,
