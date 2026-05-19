@@ -398,7 +398,7 @@ async fn post_event_rejects_revocation_without_referenced_event() {
 }
 
 #[tokio::test]
-async fn post_events_batch_accepts_claim_and_matching_revocation() {
+async fn post_events_batch_accepts_out_of_order_claim_revocation() {
     let db = TestDb::new();
     let app = db.app();
     let signer = Ed25519Keypair::generate();
@@ -410,7 +410,7 @@ async fn post_events_batch_accepts_claim_and_matching_revocation() {
         .oneshot(json_request(
             Method::POST,
             "/events/batch",
-            &vec![claim.clone(), revocation.clone()],
+            &vec![revocation.clone(), claim.clone()],
         ))
         .await
         .unwrap();

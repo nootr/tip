@@ -182,6 +182,24 @@ On `POST /events`, nodes MUST validate:
 
 Nodes MUST NOT treat external claims as true merely because the event is valid.
 
+Nodes SHOULD handle out-of-order ingestion defensively. For batch submission and peer sync, events that fail only because a referenced claim or attestation is not available yet SHOULD be retried after other valid events from the same batch/page stream have been accepted. Permanent validation failures, such as invalid signatures, ID conflicts, wrong reference types, or subject/issuer mismatches, MUST remain rejected.
+
+## Node trust model
+
+TIP nodes are untrusted transport and cache infrastructure. A node is not an authority over trust, completeness, or truth.
+
+A malicious or faulty node can:
+
+- omit valid events, including revocations
+- serve stale data
+- delay or reorder events during sync
+- refuse submissions or selectively censor subjects/issuers
+- advertise misleading `/info` metadata
+
+Clients MUST verify event IDs, canonical payloads, and signatures before using events. Clients MUST NOT treat absence from a single node as proof that an event or revocation does not exist. For trust decisions, clients SHOULD prefer evidence gathered from multiple independent nodes and/or portable bundles. When valid revocations are found from any source, projection logic MUST apply them to the referenced claim or attestation.
+
+Node `/info` metadata is descriptive only. It is not authenticated by TIP 0.1 and MUST NOT be used as a trust anchor by itself.
+
 ## HTTP API
 
 - `GET /health`
@@ -231,6 +249,8 @@ For invalid events:
 ```
 
 Batch submission is idempotent: submitting an already stored valid event is still accepted and does not create a duplicate. If a node already stores an event with the same `id` but different event content, it MUST reject the submitted event as an ID conflict.
+
+Batch submission SHOULD accept out-of-order valid revocations when the referenced event is present elsewhere in the same batch.
 
 ### Identity projections
 

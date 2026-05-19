@@ -123,35 +123,20 @@ async fn post_events_batch(
         .lock()
         .map_err(|_| ApiError::internal("store lock poisoned"))?;
 
-    let mut results = Vec::with_capacity(events.len());
-    let mut accepted = 0usize;
-    let mut rejected = 0usize;
-
-    for event in events {
-        let id = event.id.clone();
-        match use_cases::submit_event(&*store, &Ed25519Verifier, &event) {
-            Ok(()) => {
-                accepted += 1;
-                results.push(BatchEventResult {
-                    id: Some(id),
-                    accepted: true,
-                    error: None,
-                });
-            }
-            Err(err) => {
-                rejected += 1;
-                results.push(BatchEventResult {
-                    id: Some(id),
-                    accepted: false,
-                    error: Some(err.to_string()),
-                });
-            }
-        }
-    }
+    let summary = use_cases::submit_events_with_reference_retry(&*store, &Ed25519Verifier, &events);
+    let results = summary
+        .results
+        .into_iter()
+        .map(|result| BatchEventResult {
+            id: result.id,
+            accepted: result.accepted,
+            error: result.error,
+        })
+        .collect();
 
     Ok(Json(BatchEventResponse {
-        accepted,
-        rejected,
+        accepted: summary.accepted,
+        rejected: summary.rejected,
         results,
     }))
 }

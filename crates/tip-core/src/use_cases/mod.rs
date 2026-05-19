@@ -163,6 +163,82 @@ pub fn submit_event(
     Ok(())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BatchSubmitSummary {
+    pub accepted: usize,
+    pub rejected: usize,
+    pub results: Vec<BatchSubmitResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BatchSubmitResult {
+    pub id: Option<String>,
+    pub accepted: bool,
+    pub error: Option<String>,
+}
+
+pub fn submit_events_with_reference_retry(
+    store: &impl EventStore,
+    verifier: &impl Verifier,
+    events: &[SignedEvent],
+) -> BatchSubmitSummary {
+    let mut results = vec![None; events.len()];
+    let mut pending = Vec::new();
+
+    for (index, event) in events.iter().enumerate() {
+        match submit_event(store, verifier, event) {
+            Ok(()) => results[index] = Some(accepted_result(event)),
+            Err(err) if is_missing_reference_error(&err) => pending.push(index),
+            Err(err) => results[index] = Some(rejected_result(event, err)),
+        }
+    }
+
+    while !pending.is_empty() {
+        let mut next_pending = Vec::new();
+        let pending_len = pending.len();
+
+        for index in pending {
+            let event = &events[index];
+            match submit_event(store, verifier, event) {
+                Ok(()) => results[index] = Some(accepted_result(event)),
+                Err(err) if is_missing_reference_error(&err) => next_pending.push(index),
+                Err(err) => results[index] = Some(rejected_result(event, err)),
+            }
+        }
+
+        if next_pending.len() == pending_len {
+            for index in next_pending {
+                let event = &events[index];
+                let error = validate_event_for_submission(store, verifier, event)
+                    .err()
+                    .map(|err| err.to_string())
+                    .unwrap_or_else(|| "event could not be submitted".to_string());
+                results[index] = Some(BatchSubmitResult {
+                    id: Some(event.id.clone()),
+                    accepted: false,
+                    error: Some(error),
+                });
+            }
+            break;
+        }
+
+        pending = next_pending;
+    }
+
+    let results = results
+        .into_iter()
+        .map(|result| result.expect("every batch event has a result"))
+        .collect::<Vec<_>>();
+    let accepted = results.iter().filter(|result| result.accepted).count();
+    let rejected = results.len() - accepted;
+
+    BatchSubmitSummary {
+        accepted,
+        rejected,
+        results,
+    }
+}
+
 pub fn validate_event_for_submission(
     store: &impl EventStore,
     verifier: &impl Verifier,
@@ -338,6 +414,30 @@ fn invalid_event(message: impl Into<String>) -> UseCaseError {
     UseCaseError::Domain(DomainError::InvalidEvent(message.into()))
 }
 
+fn is_missing_reference_error(error: &UseCaseError) -> bool {
+    matches!(
+        error,
+        UseCaseError::Domain(DomainError::InvalidEvent(message))
+            if message.starts_with("referenced ") && message.contains(" event not found:")
+    )
+}
+
+fn accepted_result(event: &SignedEvent) -> BatchSubmitResult {
+    BatchSubmitResult {
+        id: Some(event.id.clone()),
+        accepted: true,
+        error: None,
+    }
+}
+
+fn rejected_result(event: &SignedEvent, error: UseCaseError) -> BatchSubmitResult {
+    BatchSubmitResult {
+        id: Some(event.id.clone()),
+        accepted: false,
+        error: Some(error.to_string()),
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SyncSummary {
     pub pulled: usize,
@@ -363,6 +463,7 @@ pub fn sync_from_peer(
         ..EventFilter::default()
     };
     let mut summary = SyncSummary::default();
+    let mut pending_references = Vec::new();
 
     loop {
         let events = peer.list_events(&filter)?;
@@ -370,7 +471,13 @@ pub fn sync_from_peer(
             break;
         }
 
-        apply_synced_events(store, verifier, &events, &mut summary);
+        apply_synced_events(
+            store,
+            verifier,
+            &events,
+            &mut summary,
+            &mut pending_references,
+        );
 
         let last = events.last().expect("events is not empty");
         filter.after_created_at = Some(last.unsigned.created_at);
@@ -381,6 +488,7 @@ pub fn sync_from_peer(
         }
     }
 
+    reject_pending_synced_events(&mut summary, &pending_references);
     Ok(summary)
 }
 
@@ -405,6 +513,7 @@ pub fn sync_from_peer_with_state(
     let page_limit = options.page_limit.max(1);
     filter.limit = Some(page_limit);
     let mut summary = SyncSummary::default();
+    let mut pending_references = Vec::new();
 
     loop {
         let events = peer.list_events(&filter)?;
@@ -412,7 +521,13 @@ pub fn sync_from_peer_with_state(
             break;
         }
 
-        apply_synced_events(store, verifier, &events, &mut summary);
+        apply_synced_events(
+            store,
+            verifier,
+            &events,
+            &mut summary,
+            &mut pending_references,
+        );
 
         let last = events.last().expect("events is not empty");
         filter.after_created_at = Some(last.unsigned.created_at);
@@ -429,6 +544,7 @@ pub fn sync_from_peer_with_state(
         }
     }
 
+    reject_pending_synced_events(&mut summary, &pending_references);
     Ok(summary)
 }
 
@@ -437,15 +553,38 @@ fn apply_synced_events(
     verifier: &impl Verifier,
     events: &[SignedEvent],
     summary: &mut SyncSummary,
+    pending_references: &mut Vec<SignedEvent>,
 ) {
     summary.pulled += events.len();
+    pending_references.extend_from_slice(events);
 
-    for event in events {
-        match submit_event(store, verifier, event) {
-            Ok(()) => summary.accepted += 1,
-            Err(_) => summary.rejected += 1,
+    let batch = submit_events_with_reference_retry(store, verifier, pending_references);
+    let mut still_pending = Vec::new();
+
+    for (event, result) in pending_references.iter().zip(batch.results) {
+        if result.accepted {
+            summary.accepted += 1;
+        } else if result
+            .error
+            .as_deref()
+            .map(is_missing_reference_message)
+            .unwrap_or(false)
+        {
+            still_pending.push(event.clone());
+        } else {
+            summary.rejected += 1;
         }
     }
+
+    *pending_references = still_pending;
+}
+
+fn reject_pending_synced_events(summary: &mut SyncSummary, pending_references: &[SignedEvent]) {
+    summary.rejected += pending_references.len();
+}
+
+fn is_missing_reference_message(message: &str) -> bool {
+    message.starts_with("invalid event: referenced ") && message.contains(" event not found:")
 }
 
 #[cfg(test)]
@@ -456,6 +595,8 @@ mod tests {
     use crate::testing::InMemoryEventStore;
 
     struct FixedClock;
+
+    struct TimeClock(i64);
 
     struct StaticPeer {
         events: Vec<SignedEvent>,
@@ -476,6 +617,12 @@ mod tests {
     impl Clock for FixedClock {
         fn now_unix_seconds(&self) -> i64 {
             1_700_000_000
+        }
+    }
+
+    impl Clock for TimeClock {
+        fn now_unix_seconds(&self) -> i64 {
+            self.0
         }
     }
 
@@ -596,6 +743,28 @@ mod tests {
     }
 
     #[test]
+    fn submit_events_with_reference_retry_accepts_out_of_order_revocation() {
+        let keypair = Ed25519Keypair::generate();
+        let store = InMemoryEventStore::new();
+        let claim = add_claim(&FixedClock, &keypair, "github", "joris", None).unwrap();
+        let revocation = revoke_claim(&FixedClock, &keypair, &claim.id).unwrap();
+
+        let summary = submit_events_with_reference_retry(
+            &store,
+            &Ed25519Verifier,
+            &[revocation.clone(), claim.clone()],
+        );
+
+        assert_eq!(summary.accepted, 2);
+        assert_eq!(summary.rejected, 0);
+        assert!(store.get(&claim.id).unwrap().is_some());
+        assert!(store.get(&revocation.id).unwrap().is_some());
+        assert!(active_claims(&store, keypair.public_key())
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
     fn sync_from_peer_pulls_pages_into_store() {
         let keypair = Ed25519Keypair::generate();
         let identity = create_identity(&FixedClock, &keypair).unwrap();
@@ -611,6 +780,29 @@ mod tests {
         assert_eq!(summary.accepted, 2);
         assert_eq!(summary.rejected, 0);
         assert_eq!(store.query(&EventFilter::default()).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn sync_from_peer_retries_out_of_order_revocation_across_pages() {
+        let keypair = Ed25519Keypair::generate();
+        let claim =
+            add_claim(&TimeClock(1_700_000_001), &keypair, "github", "joris", None).unwrap();
+        let revocation = revoke_claim(&TimeClock(1_700_000_000), &keypair, &claim.id).unwrap();
+        let peer = StaticPeer {
+            events: vec![revocation.clone(), claim.clone()],
+        };
+        let store = InMemoryEventStore::new();
+
+        let summary = sync_from_peer(&peer, &store, &Ed25519Verifier, 1).unwrap();
+
+        assert_eq!(summary.pulled, 2);
+        assert_eq!(summary.accepted, 2);
+        assert_eq!(summary.rejected, 0);
+        assert!(store.get(&claim.id).unwrap().is_some());
+        assert!(store.get(&revocation.id).unwrap().is_some());
+        assert!(active_claims(&store, keypair.public_key())
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

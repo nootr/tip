@@ -4,6 +4,8 @@ TIP is portable cryptographic trust infrastructure for the internet.
 
 It lets users, communities, platforms, and agents exchange verifiable public evidence as signed events: identity creation, claims, attestations, and revocations. TIP is not a universal reputation score and does not require a blockchain.
 
+TIP nodes are untrusted caches, not authorities. Clients verify signatures and decide trust with explicit policy; absence from one node is not proof that an event or revocation does not exist.
+
 ## Repository layout
 
 - `SPEC.md` — TIP 0.1 protocol draft
