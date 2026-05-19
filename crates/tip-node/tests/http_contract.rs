@@ -415,6 +415,82 @@ async fn post_events_batch_accepts_claim_and_matching_revocation() {
 }
 
 #[tokio::test]
+async fn identity_projection_endpoints_return_only_active_claims_and_attestations() {
+    let db = TestDb::new();
+    let app = db.app();
+    let signer = Ed25519Keypair::generate();
+    let subject = Ed25519Keypair::generate();
+
+    let active_claim = use_cases::add_claim(&FixedClock, &signer, "github", "joris", None).unwrap();
+    let revoked_claim =
+        use_cases::add_claim(&FixedClock, &signer, "domain", "example.com", None).unwrap();
+    let claim_revocation =
+        use_cases::revoke_claim(&FixedClock, &signer, &revoked_claim.id).unwrap();
+    let active_attestation = use_cases::issue_attestation(
+        &FixedClock,
+        &signer,
+        subject.public_key(),
+        "maintainer",
+        None,
+    )
+    .unwrap();
+    let revoked_attestation =
+        use_cases::issue_attestation(&FixedClock, &signer, subject.public_key(), "reviewer", None)
+            .unwrap();
+    let attestation_revocation = use_cases::revoke_attestation(
+        &FixedClock,
+        &signer,
+        subject.public_key(),
+        &revoked_attestation.id,
+    )
+    .unwrap();
+
+    app.clone()
+        .oneshot(json_request(
+            Method::POST,
+            "/events/batch",
+            &vec![
+                active_claim.clone(),
+                revoked_claim.clone(),
+                claim_revocation,
+                active_attestation.clone(),
+                revoked_attestation.clone(),
+                attestation_revocation,
+            ],
+        ))
+        .await
+        .unwrap();
+
+    let claims = app
+        .clone()
+        .oneshot(request(
+            Method::GET,
+            &format!("/identities/{}/claims", signer.public_key()),
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(claims.status(), StatusCode::OK);
+    let claims: Vec<SignedEvent> = serde_json::from_value(json_body(claims).await).unwrap();
+    assert_eq!(claims.len(), 1);
+    assert_eq!(claims[0].id, active_claim.id);
+
+    let attestations = app
+        .oneshot(request(
+            Method::GET,
+            &format!("/identities/{}/attestations", subject.public_key()),
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(attestations.status(), StatusCode::OK);
+    let attestations: Vec<SignedEvent> =
+        serde_json::from_value(json_body(attestations).await).unwrap();
+    assert_eq!(attestations.len(), 1);
+    assert_eq!(attestations[0].id, active_attestation.id);
+}
+
+#[tokio::test]
 async fn query_events_supports_limit_and_cursor() {
     let db = TestDb::new();
     let app = db.app();

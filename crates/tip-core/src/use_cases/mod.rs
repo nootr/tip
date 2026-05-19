@@ -1,4 +1,5 @@
 use serde_json::{json, Value};
+use std::collections::HashSet;
 
 use crate::{
     domain::{DomainError, EventFilter, EventType, SignedEvent, UnsignedEvent},
@@ -239,6 +240,62 @@ pub fn query_events(
     Ok(store.query(filter)?)
 }
 
+pub fn active_claims(
+    store: &impl EventStore,
+    subject: impl Into<String>,
+) -> Result<Vec<SignedEvent>, UseCaseError> {
+    let events = store.query(&EventFilter {
+        subject: Some(subject.into()),
+        limit: Some(i64::MAX as usize),
+        ..EventFilter::default()
+    })?;
+
+    Ok(active_events(
+        &events,
+        EventType::ClaimAdded,
+        EventType::ClaimRevoked,
+        "claim_id",
+    ))
+}
+
+pub fn active_attestations(
+    store: &impl EventStore,
+    subject: impl Into<String>,
+) -> Result<Vec<SignedEvent>, UseCaseError> {
+    let events = store.query(&EventFilter {
+        subject: Some(subject.into()),
+        limit: Some(i64::MAX as usize),
+        ..EventFilter::default()
+    })?;
+
+    Ok(active_events(
+        &events,
+        EventType::AttestationIssued,
+        EventType::AttestationRevoked,
+        "attestation_id",
+    ))
+}
+
+fn active_events(
+    events: &[SignedEvent],
+    active_kind: EventType,
+    revoked_kind: EventType,
+    reference_field: &str,
+) -> Vec<SignedEvent> {
+    let revoked_ids = events
+        .iter()
+        .filter(|event| event.unsigned.kind == revoked_kind)
+        .filter_map(|event| payload_string(event, reference_field).ok())
+        .collect::<HashSet<_>>();
+
+    events
+        .iter()
+        .filter(|event| event.unsigned.kind == active_kind)
+        .filter(|event| !revoked_ids.contains(event.id.as_str()))
+        .cloned()
+        .collect()
+}
+
 fn event_already_stored(
     store: &impl EventStore,
     event: &SignedEvent,
@@ -467,6 +524,51 @@ mod tests {
         assert!(events
             .iter()
             .any(|event| event.unsigned.kind == EventType::ClaimAdded));
+    }
+
+    #[test]
+    fn active_claims_exclude_revoked_claims() {
+        let signer = Ed25519Keypair::generate();
+        let store = InMemoryEventStore::new();
+        let active = add_claim(&FixedClock, &signer, "github", "joris", None).unwrap();
+        let revoked = add_claim(&FixedClock, &signer, "domain", "example.com", None).unwrap();
+        submit_event(&store, &Ed25519Verifier, &active).unwrap();
+        submit_event(&store, &Ed25519Verifier, &revoked).unwrap();
+        let revocation = revoke_claim(&FixedClock, &signer, &revoked.id).unwrap();
+        submit_event(&store, &Ed25519Verifier, &revocation).unwrap();
+
+        let claims = active_claims(&store, signer.public_key()).unwrap();
+
+        assert_eq!(claims.len(), 1);
+        assert_eq!(claims[0].id, active.id);
+    }
+
+    #[test]
+    fn active_attestations_exclude_revoked_attestations() {
+        let issuer = Ed25519Keypair::generate();
+        let subject = Ed25519Keypair::generate();
+        let store = InMemoryEventStore::new();
+        let active = issue_attestation(
+            &FixedClock,
+            &issuer,
+            subject.public_key(),
+            "maintainer",
+            None,
+        )
+        .unwrap();
+        let revoked =
+            issue_attestation(&FixedClock, &issuer, subject.public_key(), "reviewer", None)
+                .unwrap();
+        submit_event(&store, &Ed25519Verifier, &active).unwrap();
+        submit_event(&store, &Ed25519Verifier, &revoked).unwrap();
+        let revocation =
+            revoke_attestation(&FixedClock, &issuer, subject.public_key(), &revoked.id).unwrap();
+        submit_event(&store, &Ed25519Verifier, &revocation).unwrap();
+
+        let attestations = active_attestations(&store, subject.public_key()).unwrap();
+
+        assert_eq!(attestations.len(), 1);
+        assert_eq!(attestations[0].id, active.id);
     }
 
     #[test]

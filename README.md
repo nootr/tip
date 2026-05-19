@@ -70,6 +70,8 @@ The node exposes:
 - `POST /events/batch`
 - `GET /events?...`
 - `GET /events/{id}`
+- `GET /identities/{pubkey}/claims`
+- `GET /identities/{pubkey}/attestations`
 
 ## Config file
 

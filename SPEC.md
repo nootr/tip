@@ -192,6 +192,8 @@ Nodes MUST NOT treat external claims as true merely because the event is valid.
 - `GET /events/{id}`
 - `GET /events?subject=...&issuer=...&type=...&after_created_at=...&after_id=...&limit=...`
 - `GET /identities/{pubkey}/events`
+- `GET /identities/{pubkey}/claims`
+- `GET /identities/{pubkey}/attestations`
 
 ### Event validation
 
@@ -229,6 +231,14 @@ For invalid events:
 ```
 
 Batch submission is idempotent: submitting an already stored valid event is still accepted and does not create a duplicate. If a node already stores an event with the same `id` but different event content, it MUST reject the submitted event as an ID conflict.
+
+### Identity projections
+
+`GET /identities/{pubkey}/claims` returns active `claim.added` events for the subject, excluding claims revoked by valid `claim.revoked` events.
+
+`GET /identities/{pubkey}/attestations` returns active `attestation.issued` events for the subject, excluding attestations revoked by valid `attestation.revoked` events.
+
+Projection endpoints are read models over stored events. They do not replace the append-only event log.
 
 ### Event listing cursor
 

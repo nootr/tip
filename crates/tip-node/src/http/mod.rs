@@ -40,6 +40,11 @@ pub fn router(state: AppState) -> Router {
         .route("/events/batch", post(post_events_batch))
         .route("/events/:id", get(get_event))
         .route("/identities/:pubkey/events", get(identity_events))
+        .route("/identities/:pubkey/claims", get(identity_claims))
+        .route(
+            "/identities/:pubkey/attestations",
+            get(identity_attestations),
+        )
         .with_state(state)
 }
 
@@ -180,6 +185,32 @@ async fn identity_events(
     let events = use_cases::query_events(&*store, &filter)
         .map_err(|err| ApiError::internal(err.to_string()))?;
     Ok(Json(events))
+}
+
+async fn identity_claims(
+    State(state): State<AppState>,
+    Path(pubkey): Path<String>,
+) -> Result<Json<Vec<SignedEvent>>, ApiError> {
+    let store = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?;
+    let claims = use_cases::active_claims(&*store, pubkey)
+        .map_err(|err| ApiError::internal(err.to_string()))?;
+    Ok(Json(claims))
+}
+
+async fn identity_attestations(
+    State(state): State<AppState>,
+    Path(pubkey): Path<String>,
+) -> Result<Json<Vec<SignedEvent>>, ApiError> {
+    let store = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?;
+    let attestations = use_cases::active_attestations(&*store, pubkey)
+        .map_err(|err| ApiError::internal(err.to_string()))?;
+    Ok(Json(attestations))
 }
 
 #[derive(Serialize)]
