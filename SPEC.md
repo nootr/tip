@@ -187,10 +187,31 @@ Nodes MUST NOT treat external claims as true merely because the event is valid.
 - `GET /health`
 - `GET /info`
 - `POST /events`
+- `POST /events/validate`
 - `POST /events/batch`
 - `GET /events/{id}`
 - `GET /events?subject=...&issuer=...&type=...&after_created_at=...&after_id=...&limit=...`
 - `GET /identities/{pubkey}/events`
+
+### Event validation
+
+`POST /events/validate` accepts a signed event and validates it without storing it. The validation result includes event shape, ID, signature, reference checks, and ID conflict checks:
+
+```json
+{
+  "valid": true,
+  "error": null
+}
+```
+
+For invalid events:
+
+```json
+{
+  "valid": false,
+  "error": "event id mismatch"
+}
+```
 
 ### Batch event submission
 

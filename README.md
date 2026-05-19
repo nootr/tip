@@ -66,6 +66,7 @@ The node exposes:
 - `GET /health`
 - `GET /info`
 - `POST /events`
+- `POST /events/validate`
 - `POST /events/batch`
 - `GET /events?...`
 - `GET /events/{id}`

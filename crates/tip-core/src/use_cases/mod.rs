@@ -157,12 +157,21 @@ pub fn submit_event(
     verifier: &impl Verifier,
     event: &SignedEvent,
 ) -> Result<(), UseCaseError> {
+    validate_event_for_submission(store, verifier, event)?;
+    store.append(event)?;
+    Ok(())
+}
+
+pub fn validate_event_for_submission(
+    store: &impl EventStore,
+    verifier: &impl Verifier,
+    event: &SignedEvent,
+) -> Result<(), UseCaseError> {
     verify_event(event, verifier)?;
     if event_already_stored(store, event)? {
         return Ok(());
     }
     validate_event_references(store, event)?;
-    store.append(event)?;
     Ok(())
 }
 
@@ -458,6 +467,17 @@ mod tests {
         assert!(events
             .iter()
             .any(|event| event.unsigned.kind == EventType::ClaimAdded));
+    }
+
+    #[test]
+    fn validate_event_for_submission_does_not_append_event() {
+        let keypair = Ed25519Keypair::generate();
+        let store = InMemoryEventStore::new();
+        let event = create_identity(&FixedClock, &keypair).unwrap();
+
+        validate_event_for_submission(&store, &Ed25519Verifier, &event).unwrap();
+
+        assert!(store.get(&event.id).unwrap().is_none());
     }
 
     #[test]

@@ -36,6 +36,7 @@ pub fn router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/info", get(info))
         .route("/events", post(post_event).get(query_events))
+        .route("/events/validate", post(validate_event))
         .route("/events/batch", post(post_events_batch))
         .route("/events/:id", get(get_event))
         .route("/identities/:pubkey/events", get(identity_events))
@@ -65,6 +66,30 @@ async fn post_event(
     use_cases::submit_event(&*store, &Ed25519Verifier, &event)
         .map_err(|err| ApiError::bad_request(err.to_string()))?;
     Ok((StatusCode::ACCEPTED, Json(event)))
+}
+
+async fn validate_event(
+    State(state): State<AppState>,
+    Json(event): Json<SignedEvent>,
+) -> Result<Json<ValidateEventResponse>, ApiError> {
+    let store = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?;
+
+    let response = match use_cases::validate_event_for_submission(&*store, &Ed25519Verifier, &event)
+    {
+        Ok(()) => ValidateEventResponse {
+            valid: true,
+            error: None,
+        },
+        Err(err) => ValidateEventResponse {
+            valid: false,
+            error: Some(err.to_string()),
+        },
+    };
+
+    Ok(Json(response))
 }
 
 async fn post_events_batch(
@@ -167,6 +192,12 @@ struct InfoResponse {
     node_public_key: String,
     version: &'static str,
     protocol_version: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct ValidateEventResponse {
+    valid: bool,
+    error: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

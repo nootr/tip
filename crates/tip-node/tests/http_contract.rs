@@ -126,6 +126,77 @@ async fn post_event_accepts_valid_event_and_gets_by_id() {
 }
 
 #[tokio::test]
+async fn validate_event_reports_valid_without_storing() {
+    let db = TestDb::new();
+    let app = db.app();
+    let signer = Ed25519Keypair::generate();
+    let event = use_cases::create_identity(&FixedClock, &signer).unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(json_request(Method::POST, "/events/validate", &event))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["valid"], true);
+    assert!(body["error"].is_null());
+
+    let get = app
+        .oneshot(request(
+            Method::GET,
+            &format!("/events/{}", event.id),
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(get.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn validate_event_reports_reference_and_conflict_errors() {
+    let db = TestDb::new();
+    let signer = Ed25519Keypair::generate();
+    let claim = use_cases::add_claim(&FixedClock, &signer, "github", "joris", None).unwrap();
+    let revocation = use_cases::revoke_claim(&FixedClock, &signer, &claim.id).unwrap();
+
+    let missing_reference = db
+        .app()
+        .oneshot(json_request(Method::POST, "/events/validate", &revocation))
+        .await
+        .unwrap();
+
+    assert_eq!(missing_reference.status(), StatusCode::OK);
+    let body = json_body(missing_reference).await;
+    assert_eq!(body["valid"], false);
+    assert!(body["error"]
+        .as_str()
+        .unwrap()
+        .contains("referenced claim event not found"));
+
+    let event = use_cases::create_identity(&FixedClock, &signer).unwrap();
+    let mut conflicting = event.clone();
+    conflicting.signature = "different-signature".to_string();
+    let store = SqliteEventStore::open(db.path.to_str().unwrap()).unwrap();
+    store.append(&conflicting).unwrap();
+
+    let conflict = db
+        .app()
+        .oneshot(json_request(Method::POST, "/events/validate", &event))
+        .await
+        .unwrap();
+
+    assert_eq!(conflict.status(), StatusCode::OK);
+    let body = json_body(conflict).await;
+    assert_eq!(body["valid"], false);
+    assert!(body["error"]
+        .as_str()
+        .unwrap()
+        .contains("event id conflict"));
+}
+
+#[tokio::test]
 async fn post_events_batch_accepts_valid_events() {
     let db = TestDb::new();
     let app = db.app();
