@@ -80,25 +80,48 @@ fn cli_can_submit_batch_to_and_query_from_node() {
         claim_path.to_str().unwrap(),
     ]);
 
+    let attestation_path = env.path("attestation.json");
+    env.run_ok(&[
+        "attest",
+        "issue",
+        public_key,
+        "trusted_contributor",
+        "--out",
+        attestation_path.to_str().unwrap(),
+    ]);
+
     let batch_response = env.run_json(&[
         "event",
         "submit-batch",
         identity_path.to_str().unwrap(),
         claim_path.to_str().unwrap(),
+        attestation_path.to_str().unwrap(),
         "--node",
         &base_url,
     ]);
-    assert_eq!(batch_response["accepted"], 2);
+    assert_eq!(batch_response["accepted"], 3);
     assert_eq!(batch_response["rejected"], 0);
 
     let query = env.run_json(&["query", "--subject", public_key, "--node", &base_url]);
     let events = query.as_array().unwrap();
 
-    assert_eq!(events.len(), 2);
+    assert_eq!(events.len(), 3);
     assert!(events
         .iter()
         .any(|event| event["type"] == "identity.created"));
     assert!(events.iter().any(|event| event["type"] == "claim.added"));
+    assert!(events
+        .iter()
+        .any(|event| event["type"] == "attestation.issued"));
+
+    let explanation = env.run_json(&["trust", "explain", public_key, "--node", &base_url]);
+    assert_eq!(explanation["subject"], public_key);
+    assert_eq!(explanation["active_claims"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        explanation["active_attestations"].as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(explanation["warnings"].as_array().unwrap().len(), 0);
 
     let claims = env.run_json(&[
         "query",
@@ -120,7 +143,9 @@ fn cli_can_submit_batch_to_and_query_from_node() {
         "--node",
         &base_url,
     ]);
-    assert_eq!(attestations.as_array().unwrap().len(), 0);
+    let attestations = attestations.as_array().unwrap();
+    assert_eq!(attestations.len(), 1);
+    assert_eq!(attestations[0]["type"], "attestation.issued");
 
     let first_page = env.run_json(&[
         "query",
@@ -149,8 +174,8 @@ fn cli_can_submit_batch_to_and_query_from_node() {
         &base_url,
     ]);
     let second_page = second_page.as_array().unwrap();
-    assert_eq!(second_page.len(), 1);
-    assert_ne!(second_page[0]["id"], cursor["id"]);
+    assert_eq!(second_page.len(), 2);
+    assert!(!second_page.iter().any(|event| event["id"] == cursor["id"]));
 }
 
 struct E2eEnv {

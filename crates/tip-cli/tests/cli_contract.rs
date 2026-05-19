@@ -128,6 +128,15 @@ fn event_node_commands_are_available() {
     assert!(submit_batch.contains("--node"));
 }
 
+#[test]
+fn trust_explain_command_is_available() {
+    let env = CliEnv::new();
+    let explain = String::from_utf8(env.run_ok(&["trust", "explain", "--help"])).unwrap();
+
+    assert!(explain.contains("Usage: tip trust explain"));
+    assert!(explain.contains("--node"));
+}
+
 struct CliEnv {
     temp_dir: TempDir,
 }

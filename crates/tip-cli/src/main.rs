@@ -31,6 +31,8 @@ enum Command {
     Attest(AttestCommand),
     #[command(subcommand)]
     Event(EventCommand),
+    #[command(subcommand)]
+    Trust(TrustCommand),
     Query(QueryCommand),
 }
 
@@ -105,6 +107,19 @@ enum EventCommand {
     Validate(EventSubmit),
     Submit(EventSubmit),
     SubmitBatch(EventSubmitBatch),
+}
+
+#[derive(Subcommand)]
+enum TrustCommand {
+    Explain(TrustExplain),
+}
+
+#[derive(Args)]
+struct TrustExplain {
+    #[arg(allow_hyphen_values = true)]
+    subject: String,
+    #[arg(long, default_value = "http://127.0.0.1:8080")]
+    node: String,
 }
 
 #[derive(Args)]
@@ -265,6 +280,32 @@ fn main() -> anyhow::Result<()> {
             let response = client.post(url).json(&events).send()?.error_for_status()?;
             let accepted: Value = response.json()?;
             println!("{}", serde_json::to_string_pretty(&accepted)?);
+        }
+        Command::Trust(TrustCommand::Explain(args)) => {
+            let base = args.node.trim_end_matches('/');
+            let subject = url_encode(&args.subject);
+            let claims: Value =
+                reqwest::blocking::get(format!("{base}/identities/{subject}/claims"))?
+                    .error_for_status()?
+                    .json()?;
+            let attestations: Value =
+                reqwest::blocking::get(format!("{base}/identities/{subject}/attestations"))?
+                    .error_for_status()?
+                    .json()?;
+            let mut warnings = Vec::new();
+            if claims.as_array().is_some_and(Vec::is_empty) {
+                warnings.push("no active claims found");
+            }
+            if attestations.as_array().is_some_and(Vec::is_empty) {
+                warnings.push("no active attestations found");
+            }
+            let explanation = json!({
+                "subject": args.subject,
+                "active_claims": claims,
+                "active_attestations": attestations,
+                "warnings": warnings,
+            });
+            println!("{}", serde_json::to_string_pretty(&explanation)?);
         }
         Command::Query(args) => match args.command {
             Some(QuerySubcommand::Claims(query)) => {
