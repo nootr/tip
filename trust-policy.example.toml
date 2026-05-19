@@ -1,0 +1,22 @@
+# Example TIP trust policy for `tip trust evaluate`.
+#
+# Replace the placeholder issuer key with an Ed25519 public key that you trust
+# for your application/community context. TIP nodes stay neutral; trust policy
+# is applied client-side.
+
+[trust]
+trusted_issuers = [
+  "<issuer-public-key>",
+]
+
+# All listed required claims must match active, non-revoked claims for the subject.
+# `value` is optional. If omitted, any active claim with the given claim_type matches.
+required_claims = [
+  { claim_type = "github" },
+]
+
+# All listed attestations must match active, non-revoked attestations for the subject
+# from trusted issuers. Add `issuer = "<issuer-public-key>"` to pin a specific issuer.
+accepted_attestations = [
+  { claim = "trusted_contributor" },
+]

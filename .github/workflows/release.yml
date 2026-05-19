@@ -51,7 +51,7 @@ jobs:
           mkdir -p dist/package
           cp "target/${{ matrix.target }}/release/tip" dist/package/tip
           cp "target/${{ matrix.target }}/release/tip-node" dist/package/tip-node
-          cp README.md LICENSE SPEC.md tip-node.example.toml dist/package/
+          cp README.md LICENSE SPEC.md tip-node.example.toml trust-policy.example.toml dist/package/
           tar -C dist/package -czf "dist/${{ matrix.archive }}" .
           (cd dist && shasum -a 256 "${{ matrix.archive }}" > "${{ matrix.archive }}.sha256")
 
