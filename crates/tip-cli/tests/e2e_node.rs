@@ -194,12 +194,12 @@ fn cli_can_submit_batch_to_and_query_from_node() {
     let bundle_evaluation = env.run_json(&[
         "trust",
         "evaluate",
-        public_key,
         "--policy",
         policy_path.to_str().unwrap(),
         "--bundle",
         bundle_path.to_str().unwrap(),
     ]);
+    assert_eq!(bundle_evaluation["subject"], public_key);
     assert_eq!(bundle_evaluation["trusted"], true);
     assert_eq!(
         bundle_evaluation["matched_attestations"]
@@ -228,6 +228,32 @@ fn cli_can_submit_batch_to_and_query_from_node() {
     ]);
     assert_eq!(imported_query.as_array().unwrap().len(), 3);
     drop(imported_node);
+
+    env.run_fail_contains(
+        &[
+            "trust",
+            "evaluate",
+            "--policy",
+            policy_path.to_str().unwrap(),
+            "--node",
+            &base_url,
+        ],
+        "subject is required without --bundle",
+    );
+
+    let wrong_subject = env.key_generate("wrong-subject");
+    env.run_fail_contains(
+        &[
+            "trust",
+            "evaluate",
+            wrong_subject["public_key"].as_str().unwrap(),
+            "--policy",
+            policy_path.to_str().unwrap(),
+            "--bundle",
+            bundle_path.to_str().unwrap(),
+        ],
+        "does not match requested subject",
+    );
 
     let claim_type_only_policy = env.path("claim-type-only-policy.toml");
     std::fs::write(
@@ -395,6 +421,10 @@ impl E2eEnv {
 
     fn path(&self, name: &str) -> PathBuf {
         self.temp_dir.path().join(name)
+    }
+
+    fn key_generate(&self, name: &str) -> Value {
+        self.run_json(&["key", "generate", "--name", name])
     }
 
     fn run_json(&self, args: &[&str]) -> Value {

@@ -142,7 +142,7 @@ tip trust evaluate <public-key> --policy trust-policy.example.toml --node http:/
 tip bundle create --subject <public-key> --out bundle.json --node http://127.0.0.1:8080  # includes raw events + active projections
 tip bundle verify bundle.json
 tip bundle submit bundle.json --node http://127.0.0.1:8081
-tip trust evaluate <public-key> --policy trust-policy.example.toml --bundle bundle.json
+tip trust evaluate --policy trust-policy.example.toml --bundle bundle.json
 ```
 
 See `trust-policy.example.toml` for a documented policy template.

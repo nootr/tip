@@ -130,7 +130,7 @@ struct TrustExplain {
 #[derive(Args)]
 struct TrustEvaluate {
     #[arg(allow_hyphen_values = true)]
-    subject: String,
+    subject: Option<String>,
     #[arg(long)]
     policy: PathBuf,
     #[arg(long)]
@@ -341,11 +341,31 @@ fn main() -> anyhow::Result<()> {
         }
         Command::Trust(TrustCommand::Evaluate(args)) => {
             let policy = TrustPolicy::load(&args.policy)?;
-            let evidence = match &args.bundle {
-                Some(path) => read_bundle(path)?.into_evidence_for_subject(&args.subject)?,
-                None => fetch_active_evidence(&args.node, &args.subject)?,
+            let (subject, evidence) = match &args.bundle {
+                Some(path) => {
+                    let bundle = read_bundle(path)?;
+                    let subject = match &args.subject {
+                        Some(subject) if subject != &bundle.subject => anyhow::bail!(
+                            "bundle subject {} does not match requested subject {}",
+                            bundle.subject,
+                            subject
+                        ),
+                        Some(subject) => subject.clone(),
+                        None => bundle.subject.clone(),
+                    };
+                    let evidence = bundle.into_evidence_for_subject(&subject)?;
+                    (subject, evidence)
+                }
+                None => {
+                    let subject = args
+                        .subject
+                        .clone()
+                        .ok_or_else(|| anyhow::anyhow!("subject is required without --bundle"))?;
+                    let evidence = fetch_active_evidence(&args.node, &subject)?;
+                    (subject, evidence)
+                }
             };
-            let evaluation = evaluate_trust(&args.subject, &policy.trust, evidence);
+            let evaluation = evaluate_trust(&subject, &policy.trust, evidence);
             println!("{}", serde_json::to_string_pretty(&evaluation)?);
         }
         Command::Bundle(BundleCommand::Create(args)) => {
