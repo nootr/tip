@@ -9,6 +9,12 @@ pub struct SqliteEventStore {
     connection: Connection,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SequencedEvent {
+    pub sequence: i64,
+    pub event: SignedEvent,
+}
+
 impl SqliteEventStore {
     pub fn open(path: &str) -> Result<Self, StoreError> {
         let connection = Connection::open(path).map_err(to_store_error)?;
@@ -23,6 +29,7 @@ impl SqliteEventStore {
                 r#"
                 CREATE TABLE IF NOT EXISTS events (
                     id TEXT PRIMARY KEY NOT NULL,
+                    sequence INTEGER NOT NULL,
                     type TEXT NOT NULL,
                     subject TEXT NOT NULL,
                     issuer TEXT NOT NULL,
@@ -42,7 +49,71 @@ impl SqliteEventStore {
                 );
                 "#,
             )
-            .map_err(to_store_error)
+            .map_err(to_store_error)?;
+
+        self.ensure_sequence_column()
+    }
+
+    fn ensure_sequence_column(&self) -> Result<(), StoreError> {
+        let has_sequence = self
+            .connection
+            .prepare("PRAGMA table_info(events)")
+            .map_err(to_store_error)?
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(to_store_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(to_store_error)?
+            .iter()
+            .any(|name| name == "sequence");
+
+        if !has_sequence {
+            self.connection
+                .execute("ALTER TABLE events ADD COLUMN sequence INTEGER", [])
+                .map_err(to_store_error)?;
+            self.connection
+                .execute(
+                    "UPDATE events SET sequence = rowid WHERE sequence IS NULL",
+                    [],
+                )
+                .map_err(to_store_error)?;
+        }
+
+        self.connection
+            .execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_events_sequence ON events(sequence)",
+                [],
+            )
+            .map_err(to_store_error)?;
+
+        Ok(())
+    }
+
+    pub fn list_after_sequence(
+        &self,
+        after_sequence: i64,
+        limit: usize,
+    ) -> Result<Vec<SequencedEvent>, StoreError> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT sequence, raw_json FROM events WHERE sequence > ?1 ORDER BY sequence ASC LIMIT ?2",
+            )
+            .map_err(to_store_error)?;
+        let rows = statement
+            .query_map(params![after_sequence, limit as i64], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(to_store_error)?;
+
+        let mut events = Vec::new();
+        for row in rows {
+            let (sequence, raw) = row.map_err(to_store_error)?;
+            events.push(SequencedEvent {
+                sequence,
+                event: serde_json::from_str(&raw).map_err(to_store_error)?,
+            });
+        }
+        Ok(events)
     }
 }
 
@@ -97,8 +168,8 @@ impl EventStore for SqliteEventStore {
         self.connection
             .execute(
                 r#"
-                INSERT OR IGNORE INTO events (id, type, subject, issuer, created_at, raw_json)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                INSERT OR IGNORE INTO events (id, sequence, type, subject, issuer, created_at, raw_json)
+                VALUES (?1, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM events), ?2, ?3, ?4, ?5, ?6)
                 "#,
                 params![
                     event.id,

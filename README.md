@@ -80,6 +80,7 @@ The node exposes:
 - `POST /events/validate`
 - `POST /events/batch`
 - `GET /events?...`
+- `GET /sync/events?after_sequence=...&limit=...`
 - `GET /events/{id}`
 - `GET /identities/{pubkey}/claims`
 - `GET /identities/{pubkey}/attestations`
@@ -220,6 +221,8 @@ tip-node serve --config tip-node.toml
 ```
 
 Sync state is persisted per peer in SQLite, so later incremental syncs resume from the last seen `(created_at, id)` cursor. Full resyncs are cache-refresh mitigations, not completeness proofs.
+
+Nodes also expose `GET /sync/events?after_sequence=...&limit=...` for node-local sequence replication. Sequence values are local replication cursors, not protocol truth.
 
 ## Development
 

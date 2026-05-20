@@ -209,6 +209,7 @@ Node `/info` metadata is descriptive only. It is not authenticated by TIP 0.1 an
 - `POST /events/batch`
 - `GET /events/{id}`
 - `GET /events?subject=...&issuer=...&type=...&after_created_at=...&after_id=...&limit=...`
+- `GET /sync/events?after_sequence=...&limit=...`
 - `GET /identities/{pubkey}/events`
 - `GET /identities/{pubkey}/claims`
 - `GET /identities/{pubkey}/attestations`
@@ -358,6 +359,25 @@ GET /events?after_created_at=<last_created_at>&after_id=<last_id>&limit=500
 ```
 
 Because TIP event `created_at` is signer-controlled, cursor sync can miss an older event that a peer receives after the local cursor has advanced. Long-running nodes SHOULD periodically perform a full resync from the beginning against configured peers. Full resync is still not a completeness proof; it is a practical cache-refresh mitigation against stale cursors and late-arriving revocations.
+
+### Node-local sequence sync
+
+Reference nodes expose a node-local replication cursor:
+
+```text
+GET /sync/events?after_sequence=<sequence>&limit=500
+```
+
+Response:
+
+```json
+{
+  "events": [],
+  "next_after_sequence": 123
+}
+```
+
+`sequence` is assigned by the serving node when an event is first stored. It is useful for efficient replication from that node because it follows local append order rather than signer-controlled `created_at`. It is not part of the TIP event, is not signed, is not portable across nodes, and MUST NOT be treated as protocol truth.
 
 ## Privacy and safety
 

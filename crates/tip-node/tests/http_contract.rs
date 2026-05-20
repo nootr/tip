@@ -256,6 +256,81 @@ async fn post_events_batch_accepts_valid_events() {
 }
 
 #[tokio::test]
+async fn sync_events_returns_node_local_sequence_pages() {
+    let db = TestDb::new();
+    let app = db.app();
+    let signer = Ed25519Keypair::generate();
+    let identity = use_cases::create_identity(&FixedClock, &signer).unwrap();
+    let claim = use_cases::add_claim(&FixedClock, &signer, "github", "joris", None).unwrap();
+
+    let post = app
+        .clone()
+        .oneshot(json_request(
+            Method::POST,
+            "/events/batch",
+            &vec![identity.clone(), claim.clone()],
+        ))
+        .await
+        .unwrap();
+    assert_eq!(post.status(), StatusCode::OK);
+
+    let first = app
+        .clone()
+        .oneshot(request(Method::GET, "/sync/events?limit=1", Body::empty()))
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+    let first = json_body(first).await;
+    assert_eq!(first["events"].as_array().unwrap().len(), 1);
+    assert_eq!(first["events"][0]["id"], identity.id);
+    assert_eq!(first["next_after_sequence"], 1);
+
+    let second = app
+        .oneshot(request(
+            Method::GET,
+            "/sync/events?after_sequence=1&limit=10",
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::OK);
+    let second = json_body(second).await;
+    assert_eq!(second["events"].as_array().unwrap().len(), 1);
+    assert_eq!(second["events"][0]["id"], claim.id);
+    assert_eq!(second["next_after_sequence"], 2);
+}
+
+#[tokio::test]
+async fn sync_events_rejects_invalid_cursor_params() {
+    let db = TestDb::new();
+    let zero_limit = db
+        .app()
+        .oneshot(request(Method::GET, "/sync/events?limit=0", Body::empty()))
+        .await
+        .unwrap();
+    assert_eq!(zero_limit.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        json_body(zero_limit).await["error"],
+        "limit must be greater than zero"
+    );
+
+    let negative_sequence = db
+        .app()
+        .oneshot(request(
+            Method::GET,
+            "/sync/events?after_sequence=-1",
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(negative_sequence.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        json_body(negative_sequence).await["error"],
+        "after_sequence must be greater than or equal to zero"
+    );
+}
+
+#[tokio::test]
 async fn post_events_batch_is_idempotent_for_duplicates() {
     let db = TestDb::new();
     let app = db.app();

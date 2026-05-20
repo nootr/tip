@@ -10,7 +10,7 @@ TIP is a portable signed trust-evidence protocol. It is not a global reputation 
 - Static homepage and protocol documentation.
 - Signed TIP 0.1 events using Ed25519, JCS/RFC 8785 canonical JSON, and SHA-256 event IDs.
 - Event types for identities, claims, attestations, and revocations.
-- SQLite-backed HTTP node with event ingestion, validation, query, projections, peer sync, persistent node identity, and community metadata.
+- SQLite-backed HTTP node with event ingestion, validation, query, projections, node-local sequence sync, peer sync, persistent node identity, and community metadata.
 - CLI for keys, event creation/submission/validation, query, trust explain/evaluate, and portable bundles.
 - Portable bundles with raw events plus active projections and semantic verification.
 - Release pipeline with binary archives and checksums.
@@ -47,6 +47,7 @@ Existing mitigations:
 - conflict detection for same event ID with different content
 - revocation reference validation
 - out-of-order revocation retry during batch ingest and peer sync
+- node-local sequence sync for append-order replication cursors
 - periodic peer sync and optional full resync for stale-cursor mitigation
 - configured peer node public-key pinning
 - portable bundles that can be verified independently
@@ -77,7 +78,7 @@ The protocol is still alpha and allowed to break. Backwards compatibility is not
 
 Recommended next work, in order:
 
-1. Add node-local sequence-based sync endpoint to avoid signer-controlled `created_at` cursor gaps.
+1. Teach peer sync to use node-local sequence cursors when peers support them.
 2. Move bundle/projection verification helpers into `tip-core` so CLI is not the only implementation.
 3. Add schemas/OpenAPI-style docs for node API and bundle format.
 4. Explore signed checkpoints/transparency logs for stronger consistency evidence.

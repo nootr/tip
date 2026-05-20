@@ -49,6 +49,7 @@ pub fn router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/info", get(info))
         .route("/events", post(post_event).get(query_events))
+        .route("/sync/events", get(sync_events))
         .route("/events/validate", post(validate_event))
         .route("/events/batch", post(post_events_batch))
         .route("/events/:id", get(get_event))
@@ -172,6 +173,42 @@ async fn query_events(
     Ok(Json(events))
 }
 
+async fn sync_events(
+    State(state): State<AppState>,
+    Query(params): Query<SyncEventsQuery>,
+) -> Result<Json<SyncEventsResponse>, ApiError> {
+    let after_sequence = params.after_sequence.unwrap_or(0);
+    if after_sequence < 0 {
+        return Err(ApiError::bad_request(
+            "after_sequence must be greater than or equal to zero",
+        ));
+    }
+    if matches!(params.limit, Some(0)) {
+        return Err(ApiError::bad_request("limit must be greater than zero"));
+    }
+
+    let store = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?;
+    let sequenced_events = store
+        .list_after_sequence(after_sequence, params.limit.unwrap_or(500))
+        .map_err(|err| ApiError::internal(err.to_string()))?;
+    let next_after_sequence = sequenced_events
+        .last()
+        .map(|entry| entry.sequence)
+        .unwrap_or(after_sequence);
+    let events = sequenced_events
+        .into_iter()
+        .map(|entry| entry.event)
+        .collect();
+
+    Ok(Json(SyncEventsResponse {
+        events,
+        next_after_sequence,
+    }))
+}
+
 async fn identity_events(
     State(state): State<AppState>,
     Path(pubkey): Path<String>,
@@ -249,6 +286,18 @@ struct BatchEventResult {
     id: Option<String>,
     accepted: bool,
     error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct SyncEventsResponse {
+    events: Vec<SignedEvent>,
+    next_after_sequence: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct SyncEventsQuery {
+    after_sequence: Option<i64>,
+    limit: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
