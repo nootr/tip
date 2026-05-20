@@ -88,6 +88,13 @@ fn node_sync_pulls_events_from_peer() {
             .last_sequence,
         3
     );
+
+    let peers = list_peers(&local_db);
+    assert_eq!(peers.as_array().unwrap().len(), 1);
+    assert_eq!(peers[0]["url"], peer.base_url);
+    assert_eq!(peers[0]["status"], "reachable");
+    assert_eq!(peers[0]["failure_count"], 0);
+    assert!(peers[0]["claimed_node_public_key"].as_str().unwrap().len() > 40);
 }
 
 #[test]
@@ -278,6 +285,12 @@ fn node_sync_rejects_mismatched_pinned_peer_identity() {
         .assert()
         .failure()
         .stderr(predicates::str::contains("node public key mismatch"));
+
+    let peers = list_peers(&local_db);
+    assert_eq!(peers.as_array().unwrap().len(), 1);
+    assert_eq!(peers[0]["url"], peer.base_url);
+    assert_eq!(peers[0]["status"], "key_mismatch");
+    assert_eq!(peers[0]["failure_count"], 1);
 }
 
 #[test]
@@ -300,6 +313,19 @@ fn node_serve_sync_on_start_requires_configured_peers() {
         .stderr(predicates::str::contains(
             "configured sync requires [[peers.nodes]] entries",
         ));
+}
+
+fn list_peers(local_db: &std::path::Path) -> Value {
+    let output = AssertCommand::cargo_bin("tip-node")
+        .unwrap()
+        .args(["peers", "list", "--db", local_db.to_str().unwrap()])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    serde_json::from_slice(&output).unwrap()
 }
 
 fn sync_peer(peer: &NodeProcess, local_db: &std::path::Path, limit: usize) -> Value {

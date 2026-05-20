@@ -197,6 +197,12 @@ Manual sync from configured peers:
 tip-node sync --config tip-node.toml
 ```
 
+Inspect locally known peer candidates/statuses:
+
+```bash
+tip-node peers list --db tip-node.sqlite3
+```
+
 Force a full resync from the beginning:
 
 ```bash

@@ -32,6 +32,7 @@ This project uses pre-1.0 alpha releases while the protocol and reference implem
 - Node-local sequence sync endpoint at `GET /sync/events` for efficient replication cursors.
 - Peer sync now uses node-local sequence cursors instead of signer-controlled `created_at` cursors.
 - Documented planned peer gossip model: shared known peers as untrusted candidates, configured sync peers only for automatic sync.
+- Local `known_peers` storage and `tip-node peers list` for inspecting observed peer candidates/statuses.
 
 ## v0.1.0-alpha.2 - 2026-05-19
 

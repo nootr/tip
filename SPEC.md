@@ -386,6 +386,8 @@ TIP 0.1 does not automatically discover or trust peers. The intended discovery m
 - local configuration remains the only authority for automatic sync peers
 - no transitive trust is implied when a configured peer advertises another peer
 
+The reference node stores locally known peers for inspection. The current implementation records configured or ad-hoc peers observed during sync attempts; it does not yet expose peer gossip.
+
 A future gossip endpoint may expose bounded candidate metadata such as URL, claimed node public key, optional name, source, and last-seen timestamps. Peer key pinning is still required before promoting a candidate to a configured sync peer.
 
 Terminology:

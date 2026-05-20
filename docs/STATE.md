@@ -99,19 +99,19 @@ failure_count
 
 Useful statuses include `candidate`, `reachable`, `key_mismatch`, `unreachable`, and `blocked`.
 
-Recommended implementation order:
+Current implementation records configured or ad-hoc peers observed during sync attempts in local `known_peers` storage and exposes them through `tip-node peers list`. It does not yet expose peer gossip.
 
-1. Add `known_peers` storage.
-2. Add read-only `GET /peers` gossip endpoint with bounded response size.
-3. During sync with configured sync peers, ingest their gossiped peers as candidates only.
-4. Add `tip-node peers list` for inspection.
-5. Add explicit promotion/import later; never silent auto-trust.
+Recommended next implementation order:
+
+1. Add read-only `GET /peers` gossip endpoint with bounded response size.
+2. During sync with configured sync peers, ingest their gossiped peers as candidates only.
+3. Add explicit promotion/import later; never silent auto-trust.
 
 ## Near roadmap
 
 Recommended next work, in order:
 
-1. Add known-peer storage and read-only peer gossip as candidate discovery.
+1. Add read-only peer gossip as candidate discovery.
 2. Move bundle/projection verification helpers into `tip-core` so CLI is not the only implementation.
 3. Add schemas/OpenAPI-style docs for node API and bundle format.
 4. Explore signed checkpoints/transparency logs for stronger consistency evidence.

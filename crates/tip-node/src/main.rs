@@ -15,8 +15,9 @@ use tip_core::{
 
 use tip_node::{
     adapters::{
-        http_peer_event_client::HttpPeerEventClient, node_key_file,
-        sqlite_event_store::SqliteEventStore,
+        http_peer_event_client::HttpPeerEventClient,
+        node_key_file,
+        sqlite_event_store::{KnownPeerUpdate, SqliteEventStore},
     },
     config::{NodeConfig, PeerNodeConfig},
     http::{router, AppState},
@@ -37,6 +38,8 @@ struct Cli {
 enum Command {
     Serve(ServeCommand),
     Sync(SyncCommand),
+    #[command(subcommand)]
+    Peers(PeersCommand),
 }
 
 #[derive(Parser)]
@@ -75,11 +78,25 @@ struct SyncCommand {
     from_beginning: bool,
 }
 
+#[derive(Subcommand)]
+enum PeersCommand {
+    List(PeersListCommand),
+}
+
+#[derive(Parser)]
+struct PeersListCommand {
+    #[arg(long)]
+    config: Option<String>,
+    #[arg(long, env = "TIP_NODE_DB")]
+    db: Option<String>,
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Some(Command::Serve(command)) => run_server(command),
         Some(Command::Sync(command)) => sync(command),
+        Some(Command::Peers(PeersCommand::List(command))) => list_peers(command),
         None => run_server(ServeCommand::parse_from(["tip-node"])),
     }
 }
@@ -146,11 +163,7 @@ async fn serve(command: ServeCommand) -> anyhow::Result<()> {
 fn sync(command: SyncCommand) -> anyhow::Result<()> {
     let config = load_optional_config(command.config.as_deref())?;
     let peers = sync_peer_nodes(&command, config.as_ref())?;
-    let db = command
-        .db
-        .clone()
-        .or_else(|| config.as_ref().and_then(|config| config.node.db.clone()))
-        .unwrap_or_else(|| "tip-node.sqlite3".to_string());
+    let db = resolve_db(command.db.as_ref(), config.as_ref());
     let limit = command
         .limit
         .or_else(|| config.as_ref().and_then(|config| config.sync.limit))
@@ -182,6 +195,24 @@ fn sync(command: SyncCommand) -> anyhow::Result<()> {
     println!("{}", serde_json::to_string_pretty(&output)?);
 
     Ok(())
+}
+
+fn list_peers(command: PeersListCommand) -> anyhow::Result<()> {
+    let config = load_optional_config(command.config.as_deref())?;
+    let db = resolve_db(command.db.as_ref(), config.as_ref());
+    let store = SqliteEventStore::open(&db).context("open SQLite event store")?;
+    let peers = store
+        .list_known_peers()
+        .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+    println!("{}", serde_json::to_string_pretty(&peers)?);
+    Ok(())
+}
+
+fn resolve_db(command_db: Option<&String>, config: Option<&NodeConfig>) -> String {
+    command_db
+        .cloned()
+        .or_else(|| config.and_then(|config| config.node.db.clone()))
+        .unwrap_or_else(|| "tip-node.sqlite3".to_string())
 }
 
 #[derive(Debug)]
@@ -359,7 +390,7 @@ fn sync_peers(
 
     for sync_peer in peers {
         let peer = HttpPeerEventClient::new(&sync_peer.url);
-        let node_public_key = verify_peer_identity(sync_peer, &peer)?;
+        let node_public_key = verify_peer_identity(sync_peer, &peer, store)?;
         let summary = use_cases::sync_from_peer_with_state(
             &sync_peer.url,
             &peer,
@@ -399,13 +430,44 @@ fn sync_peers(
 fn verify_peer_identity(
     sync_peer: &SyncPeer,
     peer: &HttpPeerEventClient,
+    store: &SqliteEventStore,
 ) -> anyhow::Result<String> {
-    let info = peer
-        .node_info()
-        .with_context(|| format!("get /info from peer {}", sync_peer.url))?;
+    let now = SystemClock.now_unix_seconds();
+    let info = match peer.node_info() {
+        Ok(info) => info,
+        Err(err) => {
+            record_known_peer(
+                store,
+                KnownPeerUpdate {
+                    url: sync_peer.url.clone(),
+                    claimed_node_public_key: None,
+                    name: sync_peer.name.clone(),
+                    source_peer_url: None,
+                    seen_at: now,
+                    verified_at: None,
+                    status: "unreachable".to_string(),
+                    failed: true,
+                },
+            )?;
+            return Err(err).with_context(|| format!("get /info from peer {}", sync_peer.url));
+        }
+    };
 
     if let Some(expected) = &sync_peer.expected_node_public_key {
         if &info.node_public_key != expected {
+            record_known_peer(
+                store,
+                KnownPeerUpdate {
+                    url: sync_peer.url.clone(),
+                    claimed_node_public_key: Some(info.node_public_key.clone()),
+                    name: sync_peer.name.clone(),
+                    source_peer_url: None,
+                    seen_at: now,
+                    verified_at: Some(now),
+                    status: "key_mismatch".to_string(),
+                    failed: true,
+                },
+            )?;
             bail!(
                 "peer {} node public key mismatch: expected {}, got {}",
                 sync_peer.url,
@@ -415,7 +477,27 @@ fn verify_peer_identity(
         }
     }
 
+    record_known_peer(
+        store,
+        KnownPeerUpdate {
+            url: sync_peer.url.clone(),
+            claimed_node_public_key: Some(info.node_public_key.clone()),
+            name: sync_peer.name.clone(),
+            source_peer_url: None,
+            seen_at: now,
+            verified_at: Some(now),
+            status: "reachable".to_string(),
+            failed: false,
+        },
+    )?;
+
     Ok(info.node_public_key)
+}
+
+fn record_known_peer(store: &SqliteEventStore, update: KnownPeerUpdate) -> anyhow::Result<()> {
+    store
+        .upsert_known_peer(&update)
+        .map_err(|err| anyhow::anyhow!(err.to_string()))
 }
 
 fn sync_peer_nodes(

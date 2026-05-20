@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, ToSql};
+use rusqlite::{params, Connection, OptionalExtension, ToSql};
 use tip_core::{
     domain::{EventFilter, EventType},
     ports::{EventStore, PeerSyncState, PeerSyncStateStore, StoreError},
@@ -13,6 +13,31 @@ pub struct SqliteEventStore {
 pub struct SequencedEvent {
     pub sequence: i64,
     pub event: SignedEvent,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct KnownPeer {
+    pub url: String,
+    pub claimed_node_public_key: Option<String>,
+    pub name: Option<String>,
+    pub source_peer_url: Option<String>,
+    pub first_seen_at: i64,
+    pub last_seen_at: i64,
+    pub last_verified_at: Option<i64>,
+    pub status: String,
+    pub failure_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KnownPeerUpdate {
+    pub url: String,
+    pub claimed_node_public_key: Option<String>,
+    pub name: Option<String>,
+    pub source_peer_url: Option<String>,
+    pub seen_at: i64,
+    pub verified_at: Option<i64>,
+    pub status: String,
+    pub failed: bool,
 }
 
 impl SqliteEventStore {
@@ -45,6 +70,18 @@ impl SqliteEventStore {
                     peer_url TEXT PRIMARY KEY NOT NULL,
                     last_sequence INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS known_peers (
+                    url TEXT PRIMARY KEY NOT NULL,
+                    claimed_node_public_key TEXT,
+                    name TEXT,
+                    source_peer_url TEXT,
+                    first_seen_at INTEGER NOT NULL,
+                    last_seen_at INTEGER NOT NULL,
+                    last_verified_at INTEGER,
+                    status TEXT NOT NULL,
+                    failure_count INTEGER NOT NULL
                 );
                 "#,
             )
@@ -85,6 +122,105 @@ impl SqliteEventStore {
             .map_err(to_store_error)?;
 
         Ok(())
+    }
+
+    pub fn upsert_known_peer(&self, update: &KnownPeerUpdate) -> Result<(), StoreError> {
+        let existing = self
+            .connection
+            .query_row(
+                "SELECT first_seen_at, failure_count FROM known_peers WHERE url = ?1",
+                params![update.url],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+            )
+            .optional()
+            .map_err(to_store_error)?;
+        let (first_seen_at, existing_failures) = existing.unwrap_or((update.seen_at, 0));
+        let failure_count = if update.failed {
+            existing_failures + 1
+        } else {
+            0
+        };
+
+        self.connection
+            .execute(
+                r#"
+                INSERT INTO known_peers (
+                    url,
+                    claimed_node_public_key,
+                    name,
+                    source_peer_url,
+                    first_seen_at,
+                    last_seen_at,
+                    last_verified_at,
+                    status,
+                    failure_count
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                ON CONFLICT(url) DO UPDATE SET
+                    claimed_node_public_key = excluded.claimed_node_public_key,
+                    name = COALESCE(excluded.name, known_peers.name),
+                    source_peer_url = COALESCE(excluded.source_peer_url, known_peers.source_peer_url),
+                    last_seen_at = excluded.last_seen_at,
+                    last_verified_at = excluded.last_verified_at,
+                    status = excluded.status,
+                    failure_count = excluded.failure_count
+                "#,
+                params![
+                    update.url,
+                    update.claimed_node_public_key,
+                    update.name,
+                    update.source_peer_url,
+                    first_seen_at,
+                    update.seen_at,
+                    update.verified_at,
+                    update.status,
+                    failure_count,
+                ],
+            )
+            .map_err(to_store_error)?;
+        Ok(())
+    }
+
+    pub fn list_known_peers(&self) -> Result<Vec<KnownPeer>, StoreError> {
+        let mut statement = self
+            .connection
+            .prepare(
+                r#"
+                SELECT
+                    url,
+                    claimed_node_public_key,
+                    name,
+                    source_peer_url,
+                    first_seen_at,
+                    last_seen_at,
+                    last_verified_at,
+                    status,
+                    failure_count
+                FROM known_peers
+                ORDER BY url ASC
+                "#,
+            )
+            .map_err(to_store_error)?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok(KnownPeer {
+                    url: row.get(0)?,
+                    claimed_node_public_key: row.get(1)?,
+                    name: row.get(2)?,
+                    source_peer_url: row.get(3)?,
+                    first_seen_at: row.get(4)?,
+                    last_seen_at: row.get(5)?,
+                    last_verified_at: row.get(6)?,
+                    status: row.get(7)?,
+                    failure_count: row.get(8)?,
+                })
+            })
+            .map_err(to_store_error)?;
+
+        let mut peers = Vec::new();
+        for row in rows {
+            peers.push(row.map_err(to_store_error)?);
+        }
+        Ok(peers)
     }
 
     pub fn list_after_sequence(
