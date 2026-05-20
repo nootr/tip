@@ -457,39 +457,7 @@ pub fn sync_from_peer(
     verifier: &impl Verifier,
     page_limit: usize,
 ) -> Result<SyncSummary, UseCaseError> {
-    let page_limit = page_limit.max(1);
-    let mut filter = EventFilter {
-        limit: Some(page_limit),
-        ..EventFilter::default()
-    };
-    let mut summary = SyncSummary::default();
-    let mut pending_references = Vec::new();
-
-    loop {
-        let events = peer.list_events(&filter)?;
-        if events.is_empty() {
-            break;
-        }
-
-        apply_synced_events(
-            store,
-            verifier,
-            &events,
-            &mut summary,
-            &mut pending_references,
-        );
-
-        let last = events.last().expect("events is not empty");
-        filter.after_created_at = Some(last.unsigned.created_at);
-        filter.after_id = Some(last.id.clone());
-
-        if events.len() < page_limit {
-            break;
-        }
-    }
-
-    reject_pending_synced_events(&mut summary, &pending_references);
-    Ok(summary)
+    sync_from_peer_after_sequence(peer, store, verifier, page_limit, 0)
 }
 
 pub fn sync_from_peer_with_state(
@@ -501,51 +469,92 @@ pub fn sync_from_peer_with_state(
     clock: &impl Clock,
     options: SyncFromPeerOptions,
 ) -> Result<SyncSummary, UseCaseError> {
-    let mut filter = EventFilter::default();
+    let after_sequence = if options.from_beginning {
+        0
+    } else {
+        state_store
+            .get_peer_sync_state(peer_url)?
+            .map(|state| state.last_sequence)
+            .unwrap_or(0)
+    };
 
-    if !options.from_beginning {
-        if let Some(state) = state_store.get_peer_sync_state(peer_url)? {
-            filter.after_created_at = Some(state.last_created_at);
-            filter.after_id = Some(state.last_id);
-        }
-    }
+    let (summary, last_sequence) = sync_from_peer_after_sequence_with_cursor(
+        peer,
+        store,
+        verifier,
+        options.page_limit,
+        after_sequence,
+    )?;
 
-    let page_limit = options.page_limit.max(1);
-    filter.limit = Some(page_limit);
+    state_store.put_peer_sync_state(&PeerSyncState {
+        peer_url: peer_url.to_string(),
+        last_sequence,
+        updated_at: clock.now_unix_seconds(),
+    })?;
+
+    Ok(summary)
+}
+
+fn sync_from_peer_after_sequence(
+    peer: &impl PeerEventClient,
+    store: &impl EventStore,
+    verifier: &impl Verifier,
+    page_limit: usize,
+    after_sequence: i64,
+) -> Result<SyncSummary, UseCaseError> {
+    Ok(sync_from_peer_after_sequence_with_cursor(
+        peer,
+        store,
+        verifier,
+        page_limit,
+        after_sequence,
+    )?
+    .0)
+}
+
+fn sync_from_peer_after_sequence_with_cursor(
+    peer: &impl PeerEventClient,
+    store: &impl EventStore,
+    verifier: &impl Verifier,
+    page_limit: usize,
+    after_sequence: i64,
+) -> Result<(SyncSummary, i64), UseCaseError> {
+    let page_limit = page_limit.max(1);
+    let mut after_sequence = after_sequence.max(0);
     let mut summary = SyncSummary::default();
     let mut pending_references = Vec::new();
 
     loop {
-        let events = peer.list_events(&filter)?;
-        if events.is_empty() {
+        let page = peer.list_events_after_sequence(after_sequence, page_limit)?;
+        if page.events.is_empty() {
+            after_sequence = page.next_after_sequence.max(after_sequence);
             break;
         }
 
         apply_synced_events(
             store,
             verifier,
-            &events,
+            &page.events,
             &mut summary,
             &mut pending_references,
         );
 
-        let last = events.last().expect("events is not empty");
-        filter.after_created_at = Some(last.unsigned.created_at);
-        filter.after_id = Some(last.id.clone());
-        state_store.put_peer_sync_state(&PeerSyncState {
-            peer_url: peer_url.to_string(),
-            last_created_at: last.unsigned.created_at,
-            last_id: last.id.clone(),
-            updated_at: clock.now_unix_seconds(),
-        })?;
+        if page.next_after_sequence <= after_sequence {
+            return Err(invalid_event(format!(
+                "peer sequence cursor did not advance beyond {}",
+                after_sequence
+            )));
+        }
 
-        if events.len() < page_limit {
+        after_sequence = page.next_after_sequence;
+
+        if page.events.len() < page_limit {
             break;
         }
     }
 
     reject_pending_synced_events(&mut summary, &pending_references);
-    Ok(summary)
+    Ok((summary, after_sequence))
 }
 
 fn apply_synced_events(
@@ -591,7 +600,9 @@ fn is_missing_reference_message(message: &str) -> bool {
 mod tests {
     use super::*;
     use crate::crypto::{Ed25519Keypair, Ed25519Verifier};
-    use crate::ports::{Clock, EventStore, PeerError, PeerEventClient, PeerSyncStateStore};
+    use crate::ports::{
+        Clock, EventStore, PeerError, PeerEventClient, PeerEventPage, PeerSyncStateStore,
+    };
     use crate::testing::InMemoryEventStore;
 
     struct FixedClock;
@@ -603,14 +614,23 @@ mod tests {
     }
 
     impl PeerEventClient for StaticPeer {
-        fn list_events(&self, filter: &EventFilter) -> Result<Vec<SignedEvent>, PeerError> {
-            let store = InMemoryEventStore::new();
-            for event in &self.events {
-                store.append(event).unwrap();
-            }
-            store
-                .query(filter)
-                .map_err(|err| PeerError::Failure(err.to_string()))
+        fn list_events_after_sequence(
+            &self,
+            after_sequence: i64,
+            limit: usize,
+        ) -> Result<PeerEventPage, PeerError> {
+            let start = after_sequence.max(0) as usize;
+            let events = self
+                .events
+                .iter()
+                .skip(start)
+                .take(limit)
+                .cloned()
+                .collect::<Vec<_>>();
+            Ok(PeerEventPage {
+                next_after_sequence: start as i64 + events.len() as i64,
+                events,
+            })
         }
     }
 
@@ -806,7 +826,7 @@ mod tests {
     }
 
     #[test]
-    fn sync_from_peer_with_state_resumes_from_last_cursor() {
+    fn sync_from_peer_with_state_resumes_from_last_sequence() {
         let keypair = Ed25519Keypair::generate();
         let identity = create_identity(&FixedClock, &keypair).unwrap();
         let claim = add_claim(&FixedClock, &keypair, "github", "joris", None).unwrap();

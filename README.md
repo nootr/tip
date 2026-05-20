@@ -103,7 +103,7 @@ limit = 500
 from_beginning = false
 # Optional periodic peer sync for long-running nodes.
 # periodic_seconds = 300
-# Optional periodic full resync to catch older events missed by cursor sync.
+# Optional periodic full resync as a cache-refresh safety valve.
 # full_resync_seconds = 86400
 
 [[peers.nodes]]
@@ -212,7 +212,7 @@ periodic_seconds = 300
 full_resync_seconds = 86400
 ```
 
-`periodic_seconds` keeps long-running nodes synced with configured peers. `full_resync_seconds` periodically scans from the beginning to reduce stale-cursor gaps for late-arriving older events, including revocations. Peer key pinning reduces endpoint impersonation risk, but it does not make a peer authoritative or prove completeness.
+`periodic_seconds` keeps long-running nodes synced with configured peers using `GET /sync/events` sequence cursors. `full_resync_seconds` periodically scans from the beginning as a cache-refresh safety valve. Peer key pinning reduces endpoint impersonation risk, but it does not make a peer authoritative or prove completeness.
 
 Then:
 
@@ -220,9 +220,7 @@ Then:
 tip-node serve --config tip-node.toml
 ```
 
-Sync state is persisted per peer in SQLite, so later incremental syncs resume from the last seen `(created_at, id)` cursor. Full resyncs are cache-refresh mitigations, not completeness proofs.
-
-Nodes also expose `GET /sync/events?after_sequence=...&limit=...` for node-local sequence replication. Sequence values are local replication cursors, not protocol truth.
+Sync state is persisted per peer in SQLite, so later incremental syncs resume from the last seen node-local sequence cursor. Sequence values are local replication cursors, not protocol truth. Full resyncs are cache-refresh mitigations, not completeness proofs.
 
 ## Development
 

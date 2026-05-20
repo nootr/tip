@@ -43,8 +43,7 @@ impl SqliteEventStore {
 
                 CREATE TABLE IF NOT EXISTS peer_sync_state (
                     peer_url TEXT PRIMARY KEY NOT NULL,
-                    last_created_at INTEGER NOT NULL,
-                    last_id TEXT NOT NULL,
+                    last_sequence INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
                 );
                 "#,
@@ -122,7 +121,7 @@ impl PeerSyncStateStore for SqliteEventStore {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT peer_url, last_created_at, last_id, updated_at FROM peer_sync_state WHERE peer_url = ?1",
+                "SELECT peer_url, last_sequence, updated_at FROM peer_sync_state WHERE peer_url = ?1",
             )
             .map_err(to_store_error)?;
 
@@ -130,9 +129,8 @@ impl PeerSyncStateStore for SqliteEventStore {
         if let Some(row) = rows.next().map_err(to_store_error)? {
             Ok(Some(PeerSyncState {
                 peer_url: row.get(0).map_err(to_store_error)?,
-                last_created_at: row.get(1).map_err(to_store_error)?,
-                last_id: row.get(2).map_err(to_store_error)?,
-                updated_at: row.get(3).map_err(to_store_error)?,
+                last_sequence: row.get(1).map_err(to_store_error)?,
+                updated_at: row.get(2).map_err(to_store_error)?,
             }))
         } else {
             Ok(None)
@@ -143,19 +141,13 @@ impl PeerSyncStateStore for SqliteEventStore {
         self.connection
             .execute(
                 r#"
-                INSERT INTO peer_sync_state (peer_url, last_created_at, last_id, updated_at)
-                VALUES (?1, ?2, ?3, ?4)
+                INSERT INTO peer_sync_state (peer_url, last_sequence, updated_at)
+                VALUES (?1, ?2, ?3)
                 ON CONFLICT(peer_url) DO UPDATE SET
-                    last_created_at = excluded.last_created_at,
-                    last_id = excluded.last_id,
+                    last_sequence = excluded.last_sequence,
                     updated_at = excluded.updated_at
                 "#,
-                params![
-                    state.peer_url,
-                    state.last_created_at,
-                    state.last_id,
-                    state.updated_at,
-                ],
+                params![state.peer_url, state.last_sequence, state.updated_at,],
             )
             .map_err(to_store_error)?;
         Ok(())

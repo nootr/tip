@@ -48,7 +48,7 @@ Existing mitigations:
 - revocation reference validation
 - out-of-order revocation retry during batch ingest and peer sync
 - node-local sequence sync for append-order replication cursors
-- periodic peer sync and optional full resync for stale-cursor mitigation
+- periodic peer sync over node-local sequence cursors and optional full resync as a cache-refresh safety valve
 - configured peer node public-key pinning
 - portable bundles that can be verified independently
 
@@ -78,10 +78,9 @@ The protocol is still alpha and allowed to break. Backwards compatibility is not
 
 Recommended next work, in order:
 
-1. Teach peer sync to use node-local sequence cursors when peers support them.
-2. Move bundle/projection verification helpers into `tip-core` so CLI is not the only implementation.
-3. Add schemas/OpenAPI-style docs for node API and bundle format.
-4. Explore signed checkpoints/transparency logs for stronger consistency evidence.
+1. Move bundle/projection verification helpers into `tip-core` so CLI is not the only implementation.
+2. Add schemas/OpenAPI-style docs for node API and bundle format.
+3. Explore signed checkpoints/transparency logs for stronger consistency evidence.
 
 ## Design guardrails
 

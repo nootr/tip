@@ -36,7 +36,7 @@ fn node_sync_pulls_events_from_peer() {
     let peer = NodeProcess::start(env.path("peer.sqlite3"), env.path("peer-key.json"));
     let signer = Ed25519Keypair::generate();
     let identity = use_cases::create_identity(&FixedClock, &signer).unwrap();
-    let claim = use_cases::add_claim(&FixedClock, &signer, "github", "joris", None).unwrap();
+    let claim = use_cases::add_claim(&LaterClock, &signer, "github", "joris", None).unwrap();
 
     submit_events(&peer, &[identity.clone(), claim.clone()]);
 
@@ -63,9 +63,8 @@ fn node_sync_pulls_events_from_peer() {
     let second = sync_peer(&peer, &local_db, 1);
     assert_eq!(second, json!({ "pulled": 0, "accepted": 0, "rejected": 0 }));
 
-    let later_claim =
-        use_cases::add_claim(&LaterClock, &signer, "domain", "example.com", None).unwrap();
-    submit_events(&peer, std::slice::from_ref(&later_claim));
+    let older_revocation = use_cases::revoke_claim(&FixedClock, &signer, &claim.id).unwrap();
+    submit_events(&peer, std::slice::from_ref(&older_revocation));
 
     let third = sync_peer(&peer, &local_db, 1);
     assert_eq!(third, json!({ "pulled": 1, "accepted": 1, "rejected": 0 }));
@@ -77,7 +76,18 @@ fn node_sync_pulls_events_from_peer() {
         })
         .unwrap();
     assert_eq!(events.len(), 3);
-    assert!(events.iter().any(|event| event.id == later_claim.id));
+    assert!(events.iter().any(|event| event.id == older_revocation.id));
+    assert!(use_cases::active_claims(&store, signer.public_key())
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        store
+            .get_peer_sync_state(&peer.base_url)
+            .unwrap()
+            .unwrap()
+            .last_sequence,
+        3
+    );
 }
 
 #[test]
@@ -142,7 +152,7 @@ fn node_sync_pulls_events_from_configured_peers() {
 }
 
 #[test]
-fn node_serve_periodic_full_resync_catches_late_older_events() {
+fn node_serve_periodic_sequence_sync_catches_late_older_events() {
     let env = SyncEnv::new();
     let peer = NodeProcess::start(
         env.path("periodic-peer.sqlite3"),
@@ -158,7 +168,7 @@ fn node_serve_periodic_full_resync_catches_late_older_events() {
     std::fs::write(
         &config_path,
         format!(
-            "[node]\nbind = \"{}\"\ndb = \"{}\"\nkey = \"{}\"\n\n[sync]\nlimit = 1\nperiodic_seconds = 1\nfull_resync_seconds = 2\n\n[[peers.nodes]]\nurl = \"{}\"\nexpected_node_public_key = \"{}\"\nname = \"periodic-peer\"\n",
+            "[node]\nbind = \"{}\"\ndb = \"{}\"\nkey = \"{}\"\n\n[sync]\nlimit = 1\nperiodic_seconds = 1\n\n[[peers.nodes]]\nurl = \"{}\"\nexpected_node_public_key = \"{}\"\nname = \"periodic-peer\"\n",
             bind,
             local_db.display(),
             env.path("periodic-local-key.json").display(),

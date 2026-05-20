@@ -30,6 +30,7 @@ This project uses pre-1.0 alpha releases while the protocol and reference implem
 - `docs/STATE.md` captures the current architecture, threat model, alpha.4 status, and near roadmap.
 - `tip trust evaluate` output includes evidence source metadata and completeness warnings.
 - Node-local sequence sync endpoint at `GET /sync/events` for efficient replication cursors.
+- Peer sync now uses node-local sequence cursors instead of signer-controlled `created_at` cursors.
 
 ## v0.1.0-alpha.2 - 2026-05-19
 

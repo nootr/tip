@@ -1,13 +1,18 @@
 use serde::Deserialize;
 use tip_core::{
-    domain::EventFilter,
-    ports::{PeerError, PeerEventClient},
+    ports::{PeerError, PeerEventClient, PeerEventPage},
     SignedEvent,
 };
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct PeerNodeInfo {
     pub node_public_key: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SyncEventsResponse {
+    events: Vec<SignedEvent>,
+    next_after_sequence: i64,
 }
 
 pub struct HttpPeerEventClient {
@@ -36,40 +41,29 @@ impl HttpPeerEventClient {
 }
 
 impl PeerEventClient for HttpPeerEventClient {
-    fn list_events(&self, filter: &EventFilter) -> Result<Vec<SignedEvent>, PeerError> {
-        let mut request = self.client.get(format!("{}/events", self.base_url));
-        let mut query = Vec::new();
-
-        if let Some(subject) = &filter.subject {
-            query.push(("subject", subject.clone()));
-        }
-        if let Some(issuer) = &filter.issuer {
-            query.push(("issuer", issuer.clone()));
-        }
-        if let Some(kind) = &filter.kind {
-            query.push(("type", kind.to_string()));
-        }
-        if let Some(after_created_at) = filter.after_created_at {
-            query.push(("after_created_at", after_created_at.to_string()));
-        }
-        if let Some(after_id) = &filter.after_id {
-            query.push(("after_id", after_id.clone()));
-        }
-        if let Some(limit) = filter.limit {
-            query.push(("limit", limit.to_string()));
-        }
-
-        if !query.is_empty() {
-            request = request.query(&query);
-        }
-
-        request
+    fn list_events_after_sequence(
+        &self,
+        after_sequence: i64,
+        limit: usize,
+    ) -> Result<PeerEventPage, PeerError> {
+        let response: SyncEventsResponse = self
+            .client
+            .get(format!("{}/sync/events", self.base_url))
+            .query(&[
+                ("after_sequence", after_sequence.to_string()),
+                ("limit", limit.to_string()),
+            ])
             .send()
             .map_err(to_peer_error)?
             .error_for_status()
             .map_err(to_peer_error)?
             .json()
-            .map_err(to_peer_error)
+            .map_err(to_peer_error)?;
+
+        Ok(PeerEventPage {
+            events: response.events,
+            next_after_sequence: response.next_after_sequence,
+        })
     }
 }
 

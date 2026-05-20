@@ -327,10 +327,10 @@ Bundles MAY be submitted to nodes by submitting their `events` array through nor
 
 TIP 0.1 sync is intentionally simple and implementation-level. The protocol primitives are:
 
-- incremental reads via `GET /events` cursor pagination
+- incremental replication reads via `GET /sync/events` sequence pagination
 - idempotent writes via `POST /events` or `POST /events/batch`
 
-The reference node supports explicit configured peer nodes, manual pull sync, opt-in startup sync, optional periodic sync, optional periodic full resync, peer node-public-key pinning, and persistent per-peer cursor state. This is not peer discovery, consensus, or a guarantee that all nodes converge globally.
+The reference node supports explicit configured peer nodes, manual pull sync, opt-in startup sync, optional periodic sync, optional periodic full resync, peer node-public-key pinning, and persistent per-peer sequence state. This is not peer discovery, consensus, or a guarantee that all nodes converge globally.
 
 Configured peer nodes use:
 
@@ -347,18 +347,15 @@ A node may store, per peer:
 
 ```text
 peer_url
-last_created_at
-last_id
+last_sequence
 updated_at
 ```
 
 A later sync can resume by querying:
 
 ```text
-GET /events?after_created_at=<last_created_at>&after_id=<last_id>&limit=500
+GET /sync/events?after_sequence=<last_sequence>&limit=500
 ```
-
-Because TIP event `created_at` is signer-controlled, cursor sync can miss an older event that a peer receives after the local cursor has advanced. Long-running nodes SHOULD periodically perform a full resync from the beginning against configured peers. Full resync is still not a completeness proof; it is a practical cache-refresh mitigation against stale cursors and late-arriving revocations.
 
 ### Node-local sequence sync
 
@@ -377,7 +374,7 @@ Response:
 }
 ```
 
-`sequence` is assigned by the serving node when an event is first stored. It is useful for efficient replication from that node because it follows local append order rather than signer-controlled `created_at`. It is not part of the TIP event, is not signed, is not portable across nodes, and MUST NOT be treated as protocol truth.
+`sequence` is assigned by the serving node when an event is first stored. It is useful for efficient replication from that node because it follows local append order rather than signer-controlled `created_at`. Reference node peer sync uses this sequence cursor directly. It is not part of the TIP event, is not signed, is not portable across nodes, and MUST NOT be treated as protocol truth.
 
 ## Privacy and safety
 

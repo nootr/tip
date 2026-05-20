@@ -3,9 +3,14 @@ use crate::domain::{EventFilter, SignedEvent};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PeerSyncState {
     pub peer_url: String,
-    pub last_created_at: i64,
-    pub last_id: String,
+    pub last_sequence: i64,
     pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeerEventPage {
+    pub events: Vec<SignedEvent>,
+    pub next_after_sequence: i64,
 }
 
 pub trait Clock {
@@ -33,7 +38,11 @@ pub trait PeerSyncStateStore {
 }
 
 pub trait PeerEventClient {
-    fn list_events(&self, filter: &EventFilter) -> Result<Vec<SignedEvent>, PeerError>;
+    fn list_events_after_sequence(
+        &self,
+        after_sequence: i64,
+        limit: usize,
+    ) -> Result<PeerEventPage, PeerError>;
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]

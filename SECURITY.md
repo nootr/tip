@@ -39,7 +39,7 @@ Mitigations for users and integrators:
 - treat valid revocations from any source as overriding the referenced active event
 - treat node metadata as descriptive only, not authenticated identity
 
-The implementation retries out-of-order revocations during batch submission and peer sync when the referenced event appears later in the same ingestion stream. Long-running nodes can also enable periodic peer sync and periodic full resync to reduce stale-cursor gaps caused by signer-controlled `created_at` values. Configured peers can pin `expected_node_public_key` to reduce endpoint impersonation risk. These mitigations reduce accidental stale projections, but they do not provide global completeness guarantees.
+The implementation retries out-of-order revocations during batch submission and peer sync when the referenced event appears later in the same ingestion stream. Peer sync uses node-local sequence cursors to follow append order instead of signer-controlled `created_at` order. Long-running nodes can also enable periodic peer sync and periodic full resync as a cache-refresh safety valve. Configured peers can pin `expected_node_public_key` to reduce endpoint impersonation risk. These mitigations reduce accidental stale projections, but they do not provide global completeness guarantees.
 
 ## Scope
 
