@@ -376,6 +376,24 @@ Response:
 
 `sequence` is assigned by the serving node when an event is first stored. It is useful for efficient replication from that node because it follows local append order rather than signer-controlled `created_at`. Reference node peer sync uses this sequence cursor directly. It is not part of the TIP event, is not signed, is not portable across nodes, and MUST NOT be treated as protocol truth.
 
+## Peer discovery direction
+
+TIP 0.1 does not automatically discover or trust peers. The intended discovery model is candidate gossip:
+
+- nodes may exchange known peer candidates
+- discovered peers are untrusted by default
+- discovered peers MUST NOT be synced automatically
+- local configuration remains the only authority for automatic sync peers
+- no transitive trust is implied when a configured peer advertises another peer
+
+A future gossip endpoint may expose bounded candidate metadata such as URL, claimed node public key, optional name, source, and last-seen timestamps. Peer key pinning is still required before promoting a candidate to a configured sync peer.
+
+Terminology:
+
+- known peers: discovered candidates
+- sync peers: locally configured and optionally pinned replication sources
+- trusted issuers: policy-level event issuers
+
 ## Privacy and safety
 
 TIP 0.1 is a public event layer. Publishing an event to a node makes it public. Revocation can add new evidence, but cannot erase already replicated data.

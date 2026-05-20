@@ -183,7 +183,7 @@ tip query \
 
 ## Peer sync
 
-TIP currently supports explicit configured peer nodes. There is no peer discovery yet. Configured peers should pin `expected_node_public_key`; CLI `--peer` is intended for explicit ad-hoc unpinned sync.
+TIP currently supports explicit configured peer nodes. There is no automatic peer discovery yet. Configured peers should pin `expected_node_public_key`; CLI `--peer` is intended for explicit ad-hoc unpinned sync. The planned discovery model is peer gossip as untrusted candidate discovery: known peers may be shared, but only locally configured sync peers are synced automatically.
 
 Manual one-shot sync from a peer:
 

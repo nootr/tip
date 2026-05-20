@@ -74,13 +74,47 @@ Important alpha.4 changes:
 
 The protocol is still alpha and allowed to break. Backwards compatibility is not a priority until real users and stable semantics exist.
 
+## Peer discovery direction
+
+Target model:
+
+- **known peers** are gossiped candidates and are not trusted by default
+- **sync peers** are locally configured, pinned replication sources
+- **trusted issuers** are policy-level event issuers, separate from node peers
+
+Future peer gossip should let nodes exchange candidate peer URLs and claimed node keys. Candidates may be stored locally for inspection, but MUST NOT be synced automatically and MUST NOT become trusted transitively. Local config remains the only authority for automatic sync.
+
+A future known-peer store should track fields such as:
+
+```text
+url
+claimed_node_public_key
+source_peer_url
+first_seen_at
+last_seen_at
+last_verified_at
+status
+failure_count
+```
+
+Useful statuses include `candidate`, `reachable`, `key_mismatch`, `unreachable`, and `blocked`.
+
+Recommended implementation order:
+
+1. Add `known_peers` storage.
+2. Add read-only `GET /peers` gossip endpoint with bounded response size.
+3. During sync with configured sync peers, ingest their gossiped peers as candidates only.
+4. Add `tip-node peers list` for inspection.
+5. Add explicit promotion/import later; never silent auto-trust.
+
 ## Near roadmap
 
 Recommended next work, in order:
 
-1. Move bundle/projection verification helpers into `tip-core` so CLI is not the only implementation.
-2. Add schemas/OpenAPI-style docs for node API and bundle format.
-3. Explore signed checkpoints/transparency logs for stronger consistency evidence.
+1. Add known-peer storage and read-only peer gossip as candidate discovery.
+2. Move bundle/projection verification helpers into `tip-core` so CLI is not the only implementation.
+3. Add schemas/OpenAPI-style docs for node API and bundle format.
+4. Explore signed checkpoints/transparency logs for stronger consistency evidence.
 
 ## Design guardrails
 
