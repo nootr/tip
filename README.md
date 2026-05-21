@@ -1,10 +1,33 @@
 # TIP — Trust Infrastructure Protocol
 
-TIP is portable cryptographic trust infrastructure for the internet.
+Portable trust evidence for communities, maintainers, platforms, and agents.
 
-It lets users, communities, platforms, and agents exchange verifiable public evidence as signed events: identity creation, claims, attestations, and revocations. TIP is not a universal reputation score and does not require a blockchain.
+TIP lets people and software publish verifiable public evidence as signed events: identities, claims, attestations, and revocations. It is useful when trust needs to travel across systems without turning one database, platform, or node into the authority.
 
-TIP nodes are untrusted caches, not authorities. Clients verify signatures and decide trust with explicit policy; absence from one node is not proof that an event or revocation does not exist.
+TIP is not a universal reputation score and does not require a blockchain. TIP nodes are untrusted caches; clients verify signatures and apply explicit local policy. Absence from one node is not proof that an event or revocation does not exist.
+
+## Who is TIP for?
+
+- **Open-source maintainers** who want portable evidence about maintainership, reviews, releases, sponsorship, or incident response without relying on one forge account forever.
+- **Communities, clubs, DAOs, and teams** that need public membership, role, or endorsement attestations with revocation.
+- **Platforms and marketplaces** that want to consume external trust evidence without owning a global reputation score.
+- **AI agents and automation** that need auditable evidence about identities, capabilities, permissions, and revocations before taking action.
+
+## Use TIP when
+
+- claims and endorsements should be independently verifiable
+- revocations matter as much as positive claims
+- evidence should remain portable across apps, nodes, and communities
+- trust decisions should be local, inspectable, and policy-driven
+- a single API, SaaS account, or database should not be the authority
+
+## TIP is not
+
+- an OAuth or login replacement
+- a KYC provider or real-world identity oracle
+- a blockchain, token, or consensus network
+- a global reputation score
+- proof that a missing event or revocation does not exist
 
 ## Repository layout
 

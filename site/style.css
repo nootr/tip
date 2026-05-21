@@ -355,7 +355,9 @@ code {
 .node-section,
 .quickstart,
 .cta-section,
-.flow-section {
+.flow-section,
+.audience-section,
+.not-section {
   margin-top: 96px;
 }
 
@@ -366,16 +368,58 @@ code {
   align-items: start;
 }
 
-.feature-grid {
+.feature-grid,
+.audience-grid,
+.check-grid,
+.not-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
   gap: 14px;
 }
 
+.feature-grid {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.audience-grid,
+.not-grid {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.check-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 .feature-card,
-.panel {
+.panel,
+.check-grid div,
+.not-grid article {
   border-radius: var(--radius-md);
   padding: 24px;
+}
+
+.check-grid div,
+.not-grid article {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.check-grid strong {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text);
+  font-size: 1.02rem;
+}
+
+.check-grid span {
+  color: var(--muted);
+}
+
+.not-grid h3 {
+  color: var(--text);
+}
+
+.not-grid p {
+  margin-bottom: 0;
 }
 
 .card-number {
@@ -513,6 +557,9 @@ code {
   }
 
   .feature-grid,
+  .audience-grid,
+  .check-grid,
+  .not-grid,
   .flow-list,
   .trust-strip {
     grid-template-columns: repeat(2, 1fr);
@@ -562,6 +609,9 @@ code {
   }
 
   .feature-grid,
+  .audience-grid,
+  .check-grid,
+  .not-grid,
   .flow-list,
   .trust-strip {
     grid-template-columns: 1fr;
@@ -575,7 +625,9 @@ code {
   .node-section,
   .quickstart,
   .cta-section,
-  .flow-section {
+  .flow-section,
+  .audience-section,
+  .not-section {
     margin-top: 72px;
   }
 

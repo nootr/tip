@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TIP — Trust Infrastructure Protocol</title>
-  <meta name="description" content="TIP is an open-source protocol for portable, signed trust evidence: identities, claims, attestations, revocations, and peer-synced nodes.">
+  <meta name="description" content="TIP is open-source infrastructure for portable, signed trust evidence for communities, maintainers, platforms, and agents.">
   <meta name="theme-color" content="#080a0f">
   <meta property="og:title" content="TIP — Trust Infrastructure Protocol">
-  <meta property="og:description" content="Portable cryptographic trust evidence for apps, communities, platforms, and AI agents.">
+  <meta property="og:description" content="Portable, signed trust evidence for communities, maintainers, platforms, and agents — without a blockchain or global reputation score.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://nootr.github.io/tip/">
   <link rel="stylesheet" href="style.css">
@@ -22,6 +22,7 @@
         <span>TIP</span>
       </a>
       <div class="nav-links">
+        <a href="#use-cases">Use cases</a>
         <a href="#protocol">Protocol</a>
         <a href="#node">Node</a>
         <a href="#start">Quick start</a>
@@ -35,8 +36,8 @@
     <section class="hero section-shell">
       <div class="hero-copy">
         <p class="eyebrow">Trust Infrastructure Protocol · TIP 0.1 alpha</p>
-        <h1>Portable trust evidence for an internet of agents.</h1>
-        <p class="lead">TIP is an open-source protocol for signed identities, claims, attestations, and revocations. No blockchain. No global reputation score. Just verifiable public evidence that can move between systems.</p>
+        <h1>Portable trust evidence for communities, maintainers, platforms, and agents.</h1>
+        <p class="lead">TIP is open-source infrastructure for signed identities, claims, attestations, and revocations. Use it when trust evidence needs to move between systems without making one platform, database, or node the authority.</p>
         <div class="actions" aria-label="Primary actions">
           <a class="button primary" href="https://github.com/nootr/tip">View on GitHub</a>
           <a class="button" href="https://github.com/nootr/tip/releases">Releases</a>
@@ -60,10 +61,54 @@
     </section>
 
     <section class="trust-strip section-shell" aria-label="Project highlights">
-      <div><strong>Ed25519</strong><span>signed events</span></div>
-      <div><strong>JCS/RFC8785</strong><span>canonical JSON</span></div>
-      <div><strong>SQLite</strong><span>local node store</span></div>
-      <div><strong>MIT</strong><span>open source</span></div>
+      <div><strong>Maintainers</strong><span>portable project evidence</span></div>
+      <div><strong>Communities</strong><span>roles and attestations</span></div>
+      <div><strong>Platforms</strong><span>external trust signals</span></div>
+      <div><strong>Agents</strong><span>auditable permissions</span></div>
+    </section>
+
+    <section id="use-cases" class="section-shell audience-section">
+      <div class="section-heading">
+        <p class="eyebrow">Who it helps</p>
+        <h2>For teams that need trust to outlive one account or API.</h2>
+        <p>TIP gives public trust evidence a portable format: signed, revocable, cacheable, and verifiable by clients.</p>
+      </div>
+      <div class="audience-grid">
+        <article class="feature-card">
+          <span class="card-number">01</span>
+          <h3>Open-source maintainers</h3>
+          <p>Publish and consume evidence about maintainership, reviews, releases, sponsorship, or incident response across forges and tools.</p>
+        </article>
+        <article class="feature-card">
+          <span class="card-number">02</span>
+          <h3>Communities and teams</h3>
+          <p>Represent membership, roles, endorsements, and revocations without making a single chat server or spreadsheet authoritative.</p>
+        </article>
+        <article class="feature-card">
+          <span class="card-number">03</span>
+          <h3>Platforms and marketplaces</h3>
+          <p>Ingest external trust evidence while keeping policy local instead of inventing another opaque global reputation score.</p>
+        </article>
+        <article class="feature-card">
+          <span class="card-number">04</span>
+          <h3>AI agents and automation</h3>
+          <p>Check signed evidence about identities, capabilities, permissions, and revocations before automated systems take action.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section-shell split-section when-section">
+      <div>
+        <p class="eyebrow">Use TIP when</p>
+        <h2>Positive claims are not enough.</h2>
+        <p>TIP is built for public evidence that needs context, portability, and revocation.</p>
+      </div>
+      <div class="check-grid">
+        <div><strong>Claims must verify offline</strong><span>Events carry signatures and stable IDs.</span></div>
+        <div><strong>Revocations matter</strong><span>Safety evidence can override stale positive claims.</span></div>
+        <div><strong>Trust policy is local</strong><span>Apps decide which issuers and claims count.</span></div>
+        <div><strong>Nodes are not authorities</strong><span>They cache and transport evidence clients verify.</span></div>
+      </div>
     </section>
 
     <section id="protocol" class="section-shell split-section">
@@ -91,6 +136,19 @@
       </div>
     </section>
 
+    <section class="section-shell not-section">
+      <div class="section-heading">
+        <p class="eyebrow">Anti-positioning</p>
+        <h2>TIP is deliberately not a trust oracle.</h2>
+      </div>
+      <div class="not-grid">
+        <article><h3>Not OAuth</h3><p>TIP does not log users in or grant sessions. It publishes verifiable evidence.</p></article>
+        <article><h3>Not KYC</h3><p>TIP does not prove real-world identity. It lets issuers sign claims and attestations.</p></article>
+        <article><h3>Not blockchain</h3><p>No token, mining, staking, or consensus network is required for TIP 0.1.</p></article>
+        <article><h3>Not a global score</h3><p>Clients apply their own policy. Trust remains contextual and auditable.</p></article>
+      </div>
+    </section>
+
     <section class="section-shell flow-section" aria-labelledby="flow-title">
       <div class="section-heading">
         <p class="eyebrow">How it moves</p>
@@ -107,8 +165,8 @@
     <section id="node" class="section-shell node-section">
       <div class="section-heading">
         <p class="eyebrow">Reference node</p>
-        <h2>Run a small HTTP node with peer sync.</h2>
-        <p>The Rust node stores events in SQLite, exposes a compact HTTP API, and can periodically pull from explicitly configured peers. Run one as a community registry, public evidence mirror, or local trust-policy cache.</p>
+        <h2>Run a small HTTP node for your community or product.</h2>
+        <p>The Rust node stores events in SQLite, exposes a compact HTTP API, and can periodically pull from explicitly configured peers. Run one as a community registry, public evidence mirror, marketplace signal cache, or local trust-policy backend.</p>
       </div>
       <div class="node-grid">
         <article class="panel">
@@ -176,8 +234,8 @@ tip query --subject &lt;public-key&gt; --limit 100 \
     <section class="section-shell cta-section">
       <div>
         <p class="eyebrow">Build with it</p>
-        <h2>TIP is early, useful, and intentionally small.</h2>
-        <p>Start with the spec, run a node, submit events, and decide what trust means in your application.</p>
+        <h2>Start with one trust problem.</h2>
+        <p>Pick a community, project, marketplace, or agent workflow where signed claims and revocations would remove ambiguity. Run a node, publish events, and keep policy explicit.</p>
       </div>
       <div class="actions">
         <a class="button primary" href="https://github.com/nootr/tip">Clone repository</a>
