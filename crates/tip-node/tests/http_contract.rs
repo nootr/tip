@@ -19,7 +19,7 @@ use tip_core::{
     use_cases, SignedEvent,
 };
 use tip_node::{
-    adapters::sqlite_event_store::SqliteEventStore,
+    adapters::sqlite_event_store::{KnownPeerUpdate, SqliteEventStore},
     config::NodeMetadata,
     http::{router, AppState},
 };
@@ -115,6 +115,92 @@ async fn info_returns_node_metadata() {
     assert_eq!(body["description"], "Community trust registry");
     assert_eq!(body["website"], "https://example.com");
     assert_eq!(body["contact"], "mailto:admin@example.com");
+}
+
+#[tokio::test]
+async fn peers_returns_bounded_known_peer_candidates() {
+    let db = TestDb::new();
+    let store = SqliteEventStore::open(db.path.to_str().unwrap()).unwrap();
+    store
+        .upsert_known_peer(&KnownPeerUpdate {
+            url: "https://a.example".to_string(),
+            claimed_node_public_key: Some("key-a".to_string()),
+            name: Some("Peer A".to_string()),
+            source_peer_url: Some("https://source.example".to_string()),
+            seen_at: 1_700_000_000,
+            verified_at: Some(1_700_000_001),
+            status: "reachable".to_string(),
+            failed: false,
+        })
+        .unwrap();
+    store
+        .upsert_known_peer(&KnownPeerUpdate {
+            url: "https://b.example".to_string(),
+            claimed_node_public_key: Some("key-b".to_string()),
+            name: Some("Peer B".to_string()),
+            source_peer_url: None,
+            seen_at: 1_700_000_002,
+            verified_at: Some(1_700_000_003),
+            status: "key_mismatch".to_string(),
+            failed: true,
+        })
+        .unwrap();
+
+    let all = db
+        .app()
+        .oneshot(request(Method::GET, "/peers", Body::empty()))
+        .await
+        .unwrap();
+    assert_eq!(all.status(), StatusCode::OK);
+    let all = json_body(all).await;
+    assert_eq!(all.as_array().unwrap().len(), 2);
+    assert_eq!(all[0]["url"], "https://a.example");
+    assert_eq!(all[0]["status"], "reachable");
+    assert_eq!(all[0]["failure_count"], 0);
+    assert_eq!(all[1]["url"], "https://b.example");
+    assert_eq!(all[1]["status"], "key_mismatch");
+    assert_eq!(all[1]["failure_count"], 1);
+
+    let filtered = db
+        .app()
+        .oneshot(request(
+            Method::GET,
+            "/peers?status=reachable&limit=1",
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(filtered.status(), StatusCode::OK);
+    let filtered = json_body(filtered).await;
+    assert_eq!(filtered.as_array().unwrap().len(), 1);
+    assert_eq!(filtered[0]["url"], "https://a.example");
+}
+
+#[tokio::test]
+async fn peers_rejects_invalid_query_params() {
+    let db = TestDb::new();
+
+    let zero = db
+        .app()
+        .oneshot(request(Method::GET, "/peers?limit=0", Body::empty()))
+        .await
+        .unwrap();
+    assert_eq!(zero.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        json_body(zero).await["error"],
+        "limit must be greater than zero"
+    );
+
+    let too_large = db
+        .app()
+        .oneshot(request(Method::GET, "/peers?limit=501", Body::empty()))
+        .await
+        .unwrap();
+    assert_eq!(too_large.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        json_body(too_large).await["error"],
+        "limit must be less than or equal to 500"
+    );
 }
 
 #[tokio::test]

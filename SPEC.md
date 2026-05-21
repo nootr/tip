@@ -210,6 +210,7 @@ Node `/info` metadata is descriptive only. It is not authenticated by TIP 0.1 an
 - `GET /events/{id}`
 - `GET /events?subject=...&issuer=...&type=...&after_created_at=...&after_id=...&limit=...`
 - `GET /sync/events?after_sequence=...&limit=...`
+- `GET /peers?status=...&limit=...`
 - `GET /identities/{pubkey}/events`
 - `GET /identities/{pubkey}/claims`
 - `GET /identities/{pubkey}/attestations`
@@ -386,9 +387,9 @@ TIP 0.1 does not automatically discover or trust peers. The intended discovery m
 - local configuration remains the only authority for automatic sync peers
 - no transitive trust is implied when a configured peer advertises another peer
 
-The reference node stores locally known peers for inspection. The current implementation records configured or ad-hoc peers observed during sync attempts; it does not yet expose peer gossip.
+The reference node stores locally known peers for inspection. The current implementation records configured or ad-hoc peers observed during sync attempts and exposes them through a bounded read-only `GET /peers` endpoint. `GET /peers` may be filtered by `status` and defaults to `limit=100`, with a maximum `limit=500`.
 
-A future gossip endpoint may expose bounded candidate metadata such as URL, claimed node public key, optional name, source, and last-seen timestamps. Peer key pinning is still required before promoting a candidate to a configured sync peer.
+This endpoint exposes candidate metadata such as URL, claimed node public key, optional name, source, status, failure count, and first/last seen timestamps. Peer key pinning is still required before promoting a candidate to a configured sync peer.
 
 Terminology:
 

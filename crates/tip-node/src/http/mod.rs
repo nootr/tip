@@ -17,7 +17,10 @@ use tip_core::{
     use_cases, EventFilter, SignedEvent, PROTOCOL_VERSION,
 };
 
-use crate::{adapters::sqlite_event_store::SqliteEventStore, config::NodeMetadata};
+use crate::{
+    adapters::sqlite_event_store::{KnownPeer, SqliteEventStore},
+    config::NodeMetadata,
+};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -48,6 +51,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/info", get(info))
+        .route("/peers", get(query_peers))
         .route("/events", post(post_event).get(query_events))
         .route("/sync/events", get(sync_events))
         .route("/events/validate", post(validate_event))
@@ -157,6 +161,33 @@ async fn get_event(
         Some(event) => Ok(Json(event)),
         None => Err(ApiError::not_found("event not found")),
     }
+}
+
+async fn query_peers(
+    State(state): State<AppState>,
+    Query(params): Query<PeerQuery>,
+) -> Result<Json<Vec<KnownPeer>>, ApiError> {
+    let limit = params.limit.unwrap_or(100);
+    if limit == 0 {
+        return Err(ApiError::bad_request("limit must be greater than zero"));
+    }
+    if limit > 500 {
+        return Err(ApiError::bad_request(
+            "limit must be less than or equal to 500",
+        ));
+    }
+    if matches!(params.status.as_deref(), Some("")) {
+        return Err(ApiError::bad_request("status must not be empty"));
+    }
+
+    let store = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?;
+    let peers = store
+        .list_known_peers_filtered(params.status.as_deref(), limit)
+        .map_err(|err| ApiError::internal(err.to_string()))?;
+    Ok(Json(peers))
 }
 
 async fn query_events(
@@ -297,6 +328,12 @@ struct SyncEventsResponse {
 #[derive(Debug, Deserialize)]
 struct SyncEventsQuery {
     after_sequence: Option<i64>,
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PeerQuery {
+    status: Option<String>,
     limit: Option<usize>,
 }
 

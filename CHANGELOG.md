@@ -34,6 +34,7 @@ This project uses pre-1.0 alpha releases while the protocol and reference implem
 - Documented planned peer gossip model: shared known peers as untrusted candidates, configured sync peers only for automatic sync.
 - Local `known_peers` storage and `tip-node peers list` for inspecting observed peer candidates/statuses.
 - `docs/STATE.md` updated to reflect the alpha.5 sync/discovery posture.
+- Read-only `GET /peers` endpoint for bounded local known-peer candidate inspection.
 
 ## v0.1.0-alpha.2 - 2026-05-19
 

@@ -181,27 +181,45 @@ impl SqliteEventStore {
     }
 
     pub fn list_known_peers(&self) -> Result<Vec<KnownPeer>, StoreError> {
-        let mut statement = self
-            .connection
-            .prepare(
-                r#"
-                SELECT
-                    url,
-                    claimed_node_public_key,
-                    name,
-                    source_peer_url,
-                    first_seen_at,
-                    last_seen_at,
-                    last_verified_at,
-                    status,
-                    failure_count
-                FROM known_peers
-                ORDER BY url ASC
-                "#,
-            )
-            .map_err(to_store_error)?;
+        self.list_known_peers_filtered(None, i64::MAX as usize)
+    }
+
+    pub fn list_known_peers_filtered(
+        &self,
+        status: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<KnownPeer>, StoreError> {
+        let mut sql = r#"
+            SELECT
+                url,
+                claimed_node_public_key,
+                name,
+                source_peer_url,
+                first_seen_at,
+                last_seen_at,
+                last_verified_at,
+                status,
+                failure_count
+            FROM known_peers
+            WHERE 1=1
+        "#
+        .to_string();
+        let mut values: Vec<Box<dyn ToSql>> = Vec::new();
+
+        if let Some(status) = status {
+            sql.push_str(" AND status = ?");
+            values.push(Box::new(status.to_string()));
+        }
+        sql.push_str(" ORDER BY url ASC LIMIT ?");
+        values.push(Box::new(limit as i64));
+
+        let mut statement = self.connection.prepare(&sql).map_err(to_store_error)?;
+        let value_refs = values
+            .iter()
+            .map(|value| value.as_ref())
+            .collect::<Vec<&dyn ToSql>>();
         let rows = statement
-            .query_map([], |row| {
+            .query_map(value_refs.as_slice(), |row| {
                 Ok(KnownPeer {
                     url: row.get(0)?,
                     claimed_node_public_key: row.get(1)?,

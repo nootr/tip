@@ -80,6 +80,7 @@ The node exposes:
 - `POST /events/validate`
 - `POST /events/batch`
 - `GET /events?...`
+- `GET /peers?status=...&limit=...`
 - `GET /sync/events?after_sequence=...&limit=...`
 - `GET /events/{id}`
 - `GET /identities/{pubkey}/claims`
@@ -201,6 +202,7 @@ Inspect locally known peer candidates/statuses:
 
 ```bash
 tip-node peers list --db tip-node.sqlite3
+curl 'http://127.0.0.1:8080/peers?status=reachable&limit=100'
 ```
 
 Force a full resync from the beginning:
