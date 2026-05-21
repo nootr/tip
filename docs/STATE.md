@@ -1,6 +1,6 @@
 # State of TIP
 
-Current status after `v0.1.0-alpha.5`.
+Current status after `v0.1.0-alpha.6`.
 
 TIP is a portable signed trust-evidence protocol. It is not a global reputation score, a consensus network, a blockchain, or a claim-verification oracle.
 
@@ -10,7 +10,7 @@ TIP is a portable signed trust-evidence protocol. It is not a global reputation 
 - Static homepage and protocol documentation.
 - Signed TIP 0.1 events using Ed25519, JCS/RFC 8785 canonical JSON, and SHA-256 event IDs.
 - Event types for identities, claims, attestations, and revocations.
-- SQLite-backed HTTP node with event ingestion, validation, query, projections, node-local sequence sync, peer sync, known-peer tracking, persistent node identity, and community metadata.
+- SQLite-backed HTTP node with event ingestion, validation, query, projections, node-local sequence sync, peer sync, known-peer tracking, peer candidate gossip/announce, persistent node identity, and community metadata.
 - CLI for keys, event creation/submission/validation, query, trust explain/evaluate, and portable bundles.
 - Portable bundles with raw events plus active projections and semantic verification.
 - Release pipeline with binary archives and checksums.
@@ -63,21 +63,19 @@ Non-guarantees:
 - node metadata is descriptive, not authenticated identity beyond node-key exposure
 - known peers are candidates only, not sync peers or authorities
 
-## Alpha.5 posture
+## Alpha.6 posture
 
-`v0.1.0-alpha.5` is the first alpha with sequence-based node replication foundations.
+`v0.1.0-alpha.6` is the first alpha with peer candidate discovery foundations.
 
-Important alpha.5 changes:
+Important alpha.6 changes:
 
 - `tip trust evaluate` reports evidence source and completeness limitations
-- `GET /sync/events` exposes node-local sequence pages
-- peer sync uses sequence cursors instead of signer-controlled `created_at` cursors
-- sync state persists `last_sequence` per peer
-- configured/ad-hoc peers observed during sync are recorded in local `known_peers`
-- `tip-node peers list --status ... --limit ...` inspects local known-peer status
-- peer gossip trust model documented: known peers are candidates, configured sync peers are locally approved replication sources, trusted issuers remain policy-level
+- sequence-based peer sync from alpha.5 remains the replication foundation
+- `GET /peers` exposes bounded local known-peer candidates
 - sync from configured peers ingests their gossiped peers as local candidates only
 - `POST /peers/announce` lets new nodes request candidate listing after callback validation
+- `tip-node peers list --status ... --limit ...` filters local known-peer inspection
+- peer gossip trust model documented: known peers are candidates, configured sync peers are locally approved replication sources, trusted issuers remain policy-level
 
 The protocol is still alpha and allowed to break. Backwards compatibility is not a priority until real users and stable semantics exist.
 
