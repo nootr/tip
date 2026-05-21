@@ -36,6 +36,7 @@ This project uses pre-1.0 alpha releases while the protocol and reference implem
 - `docs/STATE.md` updated to reflect the alpha.5 sync/discovery posture.
 - Read-only `GET /peers` endpoint for bounded local known-peer candidate inspection.
 - Configured peer sync now ingests gossiped peers as untrusted local `candidate` records.
+- `POST /peers/announce` for callback-validated peer candidate self-announcement.
 
 ## v0.1.0-alpha.2 - 2026-05-19
 

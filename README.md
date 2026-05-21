@@ -81,6 +81,7 @@ The node exposes:
 - `POST /events/batch`
 - `GET /events?...`
 - `GET /peers?status=...&limit=...`
+- `POST /peers/announce`
 - `GET /sync/events?after_sequence=...&limit=...`
 - `GET /events/{id}`
 - `GET /identities/{pubkey}/claims`
@@ -184,7 +185,7 @@ tip query \
 
 ## Peer sync
 
-TIP currently supports explicit configured peer nodes. Configured peers should pin `expected_node_public_key`; CLI `--peer` is intended for explicit ad-hoc unpinned sync. During configured peer sync, nodes fetch `GET /peers` and store advertised peers as untrusted local candidates only. Discovered candidates are never synced automatically and never become trusted transitively.
+TIP currently supports explicit configured peer nodes. Configured peers should pin `expected_node_public_key`; CLI `--peer` is intended for explicit ad-hoc unpinned sync. During configured peer sync, nodes fetch `GET /peers` and store advertised peers as untrusted local candidates only. New nodes can ask to be listed with `POST /peers/announce`; the receiving node callbacks to `/info` before storing the URL as a candidate. Discovered or announced candidates are never synced automatically and never become trusted transitively.
 
 Manual one-shot sync from a peer:
 
@@ -203,6 +204,9 @@ Inspect locally known peer candidates/statuses:
 ```bash
 tip-node peers list --db tip-node.sqlite3
 curl 'http://127.0.0.1:8080/peers?status=reachable&limit=100'
+curl -X POST 'http://127.0.0.1:8080/peers/announce' \
+  -H 'content-type: application/json' \
+  -d '{"url":"https://tip-node.example.org","claimed_node_public_key":"...","name":"Example TIP node"}'
 ```
 
 Force a full resync from the beginning:

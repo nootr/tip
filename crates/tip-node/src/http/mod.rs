@@ -5,10 +5,12 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use std::{
     str::FromStr,
     sync::{Arc, Mutex},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tip_core::{
     crypto::{Ed25519Keypair, Ed25519Verifier},
@@ -18,7 +20,7 @@ use tip_core::{
 };
 
 use crate::{
-    adapters::sqlite_event_store::{KnownPeer, SqliteEventStore},
+    adapters::sqlite_event_store::{KnownPeer, KnownPeerUpdate, SqliteEventStore},
     config::NodeMetadata,
 };
 
@@ -52,6 +54,7 @@ pub fn router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/info", get(info))
         .route("/peers", get(query_peers))
+        .route("/peers/announce", post(announce_peer))
         .route("/events", post(post_event).get(query_events))
         .route("/sync/events", get(sync_events))
         .route("/events/validate", post(validate_event))
@@ -161,6 +164,68 @@ async fn get_event(
         Some(event) => Ok(Json(event)),
         None => Err(ApiError::not_found("event not found")),
     }
+}
+
+async fn announce_peer(
+    State(state): State<AppState>,
+    Json(request): Json<AnnouncePeerRequest>,
+) -> Result<(StatusCode, Json<AnnouncePeerResponse>), ApiError> {
+    let url = normalize_peer_url(&request.url)?;
+
+    if let Some(existing) = existing_known_peer(&state, &url)? {
+        return Ok((
+            StatusCode::OK,
+            Json(AnnouncePeerResponse {
+                accepted: false,
+                url: existing.url,
+                claimed_node_public_key: existing.claimed_node_public_key,
+                status: existing.status,
+            }),
+        ));
+    }
+
+    let info = fetch_peer_info(&url).await?;
+    if let Some(claimed) = &request.claimed_node_public_key {
+        if claimed != &info.node_public_key {
+            return Err(ApiError::bad_request(
+                "claimed_node_public_key does not match announced peer /info",
+            ));
+        }
+    }
+    if info.node_public_key == state.node_key.public_key() {
+        return Err(ApiError::bad_request("announced peer is this node"));
+    }
+
+    let now = now_unix_seconds();
+    let name = request.name.or(info.name);
+    let update = KnownPeerUpdate {
+        url: url.clone(),
+        claimed_node_public_key: Some(info.node_public_key.clone()),
+        name,
+        source_peer_url: None,
+        seen_at: now,
+        verified_at: Some(now),
+        status: "candidate".to_string(),
+        failed: false,
+    };
+
+    let store = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?;
+    store
+        .upsert_known_peer(&update)
+        .map_err(|err| ApiError::internal(err.to_string()))?;
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(AnnouncePeerResponse {
+            accepted: true,
+            url,
+            claimed_node_public_key: Some(info.node_public_key),
+            status: "candidate".to_string(),
+        }),
+    ))
 }
 
 async fn query_peers(
@@ -332,6 +397,27 @@ struct SyncEventsQuery {
 }
 
 #[derive(Debug, Deserialize)]
+struct AnnouncePeerRequest {
+    url: String,
+    claimed_node_public_key: Option<String>,
+    name: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct AnnouncePeerResponse {
+    accepted: bool,
+    url: String,
+    claimed_node_public_key: Option<String>,
+    status: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PeerInfoForAnnounce {
+    node_public_key: String,
+    name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct PeerQuery {
     status: Option<String>,
     limit: Option<usize>,
@@ -346,6 +432,59 @@ struct EventQuery {
     after_created_at: Option<i64>,
     after_id: Option<String>,
     limit: Option<usize>,
+}
+
+fn normalize_peer_url(url: &str) -> Result<String, ApiError> {
+    let mut parsed = Url::parse(url.trim())
+        .map_err(|_| ApiError::bad_request("peer URL must be a valid http(s) URL"))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(ApiError::bad_request(
+            "peer URL must be a valid http(s) URL",
+        ));
+    }
+    parsed.set_fragment(None);
+    parsed.set_query(None);
+    let normalized = parsed.as_str().trim_end_matches('/').to_string();
+    if normalized.is_empty() {
+        return Err(ApiError::bad_request(
+            "peer URL must be a valid http(s) URL",
+        ));
+    }
+    Ok(normalized)
+}
+
+fn existing_known_peer(state: &AppState, url: &str) -> Result<Option<KnownPeer>, ApiError> {
+    let store = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?;
+    let peers = store
+        .list_known_peers()
+        .map_err(|err| ApiError::internal(err.to_string()))?;
+    Ok(peers.into_iter().find(|peer| peer.url == url))
+}
+
+async fn fetch_peer_info(url: &str) -> Result<PeerInfoForAnnounce, ApiError> {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .map_err(|err| ApiError::internal(err.to_string()))?
+        .get(format!("{url}/info"))
+        .send()
+        .await
+        .map_err(|err| ApiError::bad_request(format!("announced peer is not reachable: {err}")))?
+        .error_for_status()
+        .map_err(|err| ApiError::bad_request(format!("announced peer /info failed: {err}")))?
+        .json()
+        .await
+        .map_err(|err| ApiError::bad_request(format!("announced peer /info is invalid: {err}")))
+}
+
+fn now_unix_seconds() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
 }
 
 impl EventQuery {

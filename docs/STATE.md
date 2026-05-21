@@ -77,6 +77,7 @@ Important alpha.5 changes:
 - `tip-node peers list` inspects local known-peer status
 - peer gossip trust model documented: known peers are candidates, configured sync peers are locally approved replication sources, trusted issuers remain policy-level
 - sync from configured peers ingests their gossiped peers as local candidates only
+- `POST /peers/announce` lets new nodes request candidate listing after callback validation
 
 The protocol is still alpha and allowed to break. Backwards compatibility is not a priority until real users and stable semantics exist.
 
@@ -88,7 +89,7 @@ Target model:
 - **sync peers** are locally configured, pinned replication sources
 - **trusted issuers** are policy-level event issuers, separate from node peers
 
-Peer gossip lets nodes exchange candidate peer URLs and claimed node keys. Candidates may be stored locally for inspection, but MUST NOT be synced automatically and MUST NOT become trusted transitively. Local config remains the only authority for automatic sync.
+Peer gossip lets nodes exchange candidate peer URLs and claimed node keys. New nodes may also announce themselves to existing nodes. Candidates may be stored locally for inspection, but MUST NOT be synced automatically and MUST NOT become trusted transitively. Local config remains the only authority for automatic sync.
 
 Known-peer storage tracks:
 
@@ -106,7 +107,7 @@ failure_count
 
 Useful statuses include `candidate`, `reachable`, `key_mismatch`, `unreachable`, and `blocked`.
 
-Current implementation records configured or ad-hoc peers observed during sync attempts in local `known_peers` storage and exposes them through `tip-node peers list` and read-only `GET /peers`. During sync from configured peers, it fetches `GET /peers?limit=500` and stores valid advertised peers as local `candidate` records with `source_peer_url` set. Invalid URLs, the source peer itself, and already-known peers are ignored. CLI `--peer` ad-hoc sync does not ingest gossiped candidates.
+Current implementation records configured or ad-hoc peers observed during sync attempts in local `known_peers` storage and exposes them through `tip-node peers list` and read-only `GET /peers`. During sync from configured peers, it fetches `GET /peers?limit=500` and stores valid advertised peers as local `candidate` records with `source_peer_url` set. `POST /peers/announce` validates an announced URL by callback to `/info`, rejects mismatched claimed keys and self-announcement, then stores the peer as `candidate`. Invalid URLs, the source peer itself, and already-known peers are ignored. CLI `--peer` ad-hoc sync does not ingest gossiped candidates.
 
 Recommended next implementation order:
 

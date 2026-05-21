@@ -3,7 +3,7 @@ use axum::{
     http::{Method, Request, StatusCode},
     Router,
 };
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::{
     fs,
     path::PathBuf,
@@ -115,6 +115,26 @@ async fn info_returns_node_metadata() {
     assert_eq!(body["description"], "Community trust registry");
     assert_eq!(body["website"], "https://example.com");
     assert_eq!(body["contact"], "mailto:admin@example.com");
+}
+
+#[tokio::test]
+async fn peer_announce_rejects_invalid_url_before_callback() {
+    let db = TestDb::new();
+    let response = db
+        .app()
+        .oneshot(json_request(
+            Method::POST,
+            "/peers/announce",
+            &json!({ "url": "not a url" }),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        json_body(response).await["error"],
+        "peer URL must be a valid http(s) URL"
+    );
 }
 
 #[tokio::test]

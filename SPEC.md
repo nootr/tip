@@ -211,6 +211,7 @@ Node `/info` metadata is descriptive only. It is not authenticated by TIP 0.1 an
 - `GET /events?subject=...&issuer=...&type=...&after_created_at=...&after_id=...&limit=...`
 - `GET /sync/events?after_sequence=...&limit=...`
 - `GET /peers?status=...&limit=...`
+- `POST /peers/announce`
 - `GET /identities/{pubkey}/events`
 - `GET /identities/{pubkey}/claims`
 - `GET /identities/{pubkey}/attestations`
@@ -382,6 +383,7 @@ Response:
 TIP 0.1 does not automatically trust or sync discovered peers. The discovery model is candidate gossip:
 
 - nodes may exchange known peer candidates through `GET /peers`
+- new nodes may announce themselves through `POST /peers/announce`
 - configured sync peers may advertise further candidates
 - discovered peers are untrusted by default
 - discovered peers MUST NOT be synced automatically
@@ -392,7 +394,9 @@ The reference node stores locally known peers for inspection. It records configu
 
 During sync from locally configured peers, the reference node fetches `GET /peers?limit=500` and stores valid advertised peer URLs as local `candidate` records with `source_peer_url` set to the configured peer. Invalid URLs, the source peer itself, and already-known peers are ignored. CLI `--peer` ad-hoc sync does not ingest gossiped candidates.
 
-This endpoint exposes candidate metadata such as URL, claimed node public key, optional name, source, status, failure count, and first/last seen timestamps. Peer key pinning is still required before promoting a candidate to a configured sync peer.
+`POST /peers/announce` accepts a peer URL, optional claimed node public key, and optional name. The receiving node validates the URL, calls `GET <url>/info`, rejects mismatched claimed keys, rejects announcing itself, and only then stores the peer as a local `candidate`. Announcement is not trust promotion and does not enable automatic sync.
+
+These endpoints expose candidate metadata such as URL, claimed node public key, optional name, source, status, failure count, and first/last seen timestamps. Peer key pinning is still required before promoting a candidate to a configured sync peer.
 
 Terminology:
 

@@ -159,6 +159,77 @@ fn node_sync_pulls_events_from_configured_peers() {
 }
 
 #[test]
+fn node_accepts_peer_announce_after_callback_validation() {
+    let env = SyncEnv::new();
+    let candidate = NodeProcess::start(
+        env.path("announce-candidate.sqlite3"),
+        env.path("announce-candidate-key.json"),
+    );
+    let receiver_db = env.path("announce-receiver.sqlite3");
+    let receiver = NodeProcess::start(receiver_db.clone(), env.path("announce-receiver-key.json"));
+    let candidate_key = candidate.node_public_key();
+
+    let response: Value = reqwest::blocking::Client::new()
+        .post(format!("{}/peers/announce", receiver.base_url))
+        .json(&json!({
+            "url": format!("{}/", candidate.base_url),
+            "claimed_node_public_key": candidate_key,
+            "name": "announced candidate"
+        }))
+        .send()
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .unwrap();
+
+    assert_eq!(response["accepted"], true);
+    assert_eq!(response["url"], candidate.base_url);
+    assert_eq!(response["status"], "candidate");
+
+    let peers = list_peers(&receiver_db);
+    let peers = peers.as_array().unwrap();
+    assert_eq!(peers.len(), 1);
+    assert_eq!(peers[0]["url"], candidate.base_url);
+    assert_eq!(
+        peers[0]["claimed_node_public_key"],
+        response["claimed_node_public_key"]
+    );
+    assert_eq!(peers[0]["name"], "announced candidate");
+    assert_eq!(peers[0]["status"], "candidate");
+    assert_eq!(peers[0]["failure_count"], 0);
+    assert!(peers[0]["source_peer_url"].is_null());
+    assert!(peers[0]["last_verified_at"].as_i64().unwrap() > 0);
+}
+
+#[test]
+fn node_rejects_peer_announce_with_mismatched_claimed_key() {
+    let env = SyncEnv::new();
+    let candidate = NodeProcess::start(
+        env.path("announce-mismatch-candidate.sqlite3"),
+        env.path("announce-mismatch-candidate-key.json"),
+    );
+    let receiver_db = env.path("announce-mismatch-receiver.sqlite3");
+    let receiver = NodeProcess::start(
+        receiver_db.clone(),
+        env.path("announce-mismatch-receiver-key.json"),
+    );
+
+    let response = reqwest::blocking::Client::new()
+        .post(format!("{}/peers/announce", receiver.base_url))
+        .json(&json!({
+            "url": candidate.base_url.clone(),
+            "claimed_node_public_key": "wrong-key"
+        }))
+        .send()
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    let peers = list_peers(&receiver_db);
+    assert!(peers.as_array().unwrap().is_empty());
+}
+
+#[test]
 fn node_sync_ingests_gossiped_peers_as_candidates() {
     let env = SyncEnv::new();
     let source = NodeProcess::start(
