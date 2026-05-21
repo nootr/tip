@@ -200,6 +200,29 @@ fn node_accepts_peer_announce_after_callback_validation() {
     assert_eq!(peers[0]["failure_count"], 0);
     assert!(peers[0]["source_peer_url"].is_null());
     assert!(peers[0]["last_verified_at"].as_i64().unwrap() > 0);
+
+    let candidates = list_peers_with_args(&receiver_db, &["--status", "candidate", "--limit", "1"]);
+    assert_eq!(candidates.as_array().unwrap().len(), 1);
+    assert_eq!(candidates[0]["url"], candidate.base_url);
+
+    let reachable = list_peers_with_args(&receiver_db, &["--status", "reachable"]);
+    assert!(reachable.as_array().unwrap().is_empty());
+
+    AssertCommand::cargo_bin("tip-node")
+        .unwrap()
+        .args([
+            "peers",
+            "list",
+            "--db",
+            receiver_db.to_str().unwrap(),
+            "--limit",
+            "501",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "limit must be less than or equal to 500",
+        ));
 }
 
 #[test]
@@ -485,9 +508,15 @@ fn node_serve_sync_on_start_requires_configured_peers() {
 }
 
 fn list_peers(local_db: &std::path::Path) -> Value {
+    list_peers_with_args(local_db, &[])
+}
+
+fn list_peers_with_args(local_db: &std::path::Path, extra_args: &[&str]) -> Value {
+    let mut args = vec!["peers", "list", "--db", local_db.to_str().unwrap()];
+    args.extend_from_slice(extra_args);
     let output = AssertCommand::cargo_bin("tip-node")
         .unwrap()
-        .args(["peers", "list", "--db", local_db.to_str().unwrap()])
+        .args(args)
         .assert()
         .success()
         .get_output()

@@ -74,7 +74,7 @@ Important alpha.5 changes:
 - peer sync uses sequence cursors instead of signer-controlled `created_at` cursors
 - sync state persists `last_sequence` per peer
 - configured/ad-hoc peers observed during sync are recorded in local `known_peers`
-- `tip-node peers list` inspects local known-peer status
+- `tip-node peers list --status ... --limit ...` inspects local known-peer status
 - peer gossip trust model documented: known peers are candidates, configured sync peers are locally approved replication sources, trusted issuers remain policy-level
 - sync from configured peers ingests their gossiped peers as local candidates only
 - `POST /peers/announce` lets new nodes request candidate listing after callback validation

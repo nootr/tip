@@ -203,6 +203,7 @@ Inspect locally known peer candidates/statuses:
 
 ```bash
 tip-node peers list --db tip-node.sqlite3
+tip-node peers list --db tip-node.sqlite3 --status candidate --limit 100
 curl 'http://127.0.0.1:8080/peers?status=reachable&limit=100'
 curl -X POST 'http://127.0.0.1:8080/peers/announce' \
   -H 'content-type: application/json' \

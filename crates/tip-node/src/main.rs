@@ -90,6 +90,10 @@ struct PeersListCommand {
     config: Option<String>,
     #[arg(long, env = "TIP_NODE_DB")]
     db: Option<String>,
+    #[arg(long)]
+    status: Option<String>,
+    #[arg(long)]
+    limit: Option<usize>,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -199,11 +203,22 @@ fn sync(command: SyncCommand) -> anyhow::Result<()> {
 }
 
 fn list_peers(command: PeersListCommand) -> anyhow::Result<()> {
+    let limit = command.limit.unwrap_or(i64::MAX as usize);
+    if limit == 0 {
+        bail!("limit must be greater than zero");
+    }
+    if limit > 500 && command.limit.is_some() {
+        bail!("limit must be less than or equal to 500");
+    }
+    if matches!(command.status.as_deref(), Some("")) {
+        bail!("status must not be empty");
+    }
+
     let config = load_optional_config(command.config.as_deref())?;
     let db = resolve_db(command.db.as_ref(), config.as_ref());
     let store = SqliteEventStore::open(&db).context("open SQLite event store")?;
     let peers = store
-        .list_known_peers()
+        .list_known_peers_filtered(command.status.as_deref(), limit)
         .map_err(|err| anyhow::anyhow!(err.to_string()))?;
     println!("{}", serde_json::to_string_pretty(&peers)?);
     Ok(())

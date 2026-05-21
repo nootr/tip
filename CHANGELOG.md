@@ -37,6 +37,7 @@ This project uses pre-1.0 alpha releases while the protocol and reference implem
 - Read-only `GET /peers` endpoint for bounded local known-peer candidate inspection.
 - Configured peer sync now ingests gossiped peers as untrusted local `candidate` records.
 - `POST /peers/announce` for callback-validated peer candidate self-announcement.
+- `tip-node peers list --status ... --limit ...` for read-only candidate inspection.
 
 ## v0.1.0-alpha.2 - 2026-05-19
 
