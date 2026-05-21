@@ -159,6 +159,104 @@ fn node_sync_pulls_events_from_configured_peers() {
 }
 
 #[test]
+fn node_sync_ingests_gossiped_peers_as_candidates() {
+    let env = SyncEnv::new();
+    let source = NodeProcess::start(
+        env.path("gossip-source.sqlite3"),
+        env.path("gossip-source-key.json"),
+    );
+    let source_store =
+        SqliteEventStore::open(env.path("gossip-source.sqlite3").to_str().unwrap()).unwrap();
+    source_store
+        .upsert_known_peer(&tip_node::adapters::sqlite_event_store::KnownPeerUpdate {
+            url: "https://candidate.example".to_string(),
+            claimed_node_public_key: Some("candidate-key".to_string()),
+            name: Some("candidate node".to_string()),
+            source_peer_url: None,
+            seen_at: 1_700_000_010,
+            verified_at: None,
+            status: "reachable".to_string(),
+            failed: false,
+        })
+        .unwrap();
+    source_store
+        .upsert_known_peer(&tip_node::adapters::sqlite_event_store::KnownPeerUpdate {
+            url: "not a url".to_string(),
+            claimed_node_public_key: Some("invalid-key".to_string()),
+            name: Some("invalid node".to_string()),
+            source_peer_url: None,
+            seen_at: 1_700_000_011,
+            verified_at: None,
+            status: "reachable".to_string(),
+            failed: false,
+        })
+        .unwrap();
+    source_store
+        .upsert_known_peer(&tip_node::adapters::sqlite_event_store::KnownPeerUpdate {
+            url: source.base_url.clone(),
+            claimed_node_public_key: Some(source.node_public_key()),
+            name: Some("source self".to_string()),
+            source_peer_url: None,
+            seen_at: 1_700_000_012,
+            verified_at: None,
+            status: "reachable".to_string(),
+            failed: false,
+        })
+        .unwrap();
+
+    let config_path = env.path("gossip-tip-node.toml");
+    let local_db = env.path("gossip-local.sqlite3");
+    std::fs::write(
+        &config_path,
+        format!(
+            "[node]\ndb = \"{}\"\n\n[[peers.nodes]]\nurl = \"{}\"\nexpected_node_public_key = \"{}\"\nname = \"source\"\n",
+            local_db.display(),
+            source.base_url,
+            source.node_public_key()
+        ),
+    )
+    .unwrap();
+
+    AssertCommand::cargo_bin("tip-node")
+        .unwrap()
+        .args(["sync", "--config", config_path.to_str().unwrap()])
+        .assert()
+        .success();
+
+    let peers = list_peers(&local_db);
+    let peers = peers.as_array().unwrap();
+    assert_eq!(peers.len(), 2);
+    assert!(peers.iter().any(|peer| {
+        peer["url"] == source.base_url
+            && peer["status"] == "reachable"
+            && peer["source_peer_url"].is_null()
+    }));
+    let candidate = peers
+        .iter()
+        .find(|peer| peer["url"] == "https://candidate.example")
+        .unwrap();
+    assert_eq!(candidate["claimed_node_public_key"], "candidate-key");
+    assert_eq!(candidate["name"], "candidate node");
+    assert_eq!(candidate["source_peer_url"], source.base_url);
+    assert_eq!(candidate["status"], "candidate");
+    assert_eq!(candidate["failure_count"], 0);
+    assert!(candidate["last_verified_at"].is_null());
+    assert!(!peers.iter().any(|peer| peer["url"] == "not a url"));
+
+    let ad_hoc_db = env.path("gossip-ad-hoc-local.sqlite3");
+    let ad_hoc_summary = sync_peer(&source, &ad_hoc_db, 500);
+    assert_eq!(
+        ad_hoc_summary,
+        json!({ "pulled": 0, "accepted": 0, "rejected": 0 })
+    );
+    let ad_hoc_peers = list_peers(&ad_hoc_db);
+    let ad_hoc_peers = ad_hoc_peers.as_array().unwrap();
+    assert_eq!(ad_hoc_peers.len(), 1);
+    assert_eq!(ad_hoc_peers[0]["url"], source.base_url);
+    assert_eq!(ad_hoc_peers[0]["status"], "reachable");
+}
+
+#[test]
 fn node_serve_periodic_sequence_sync_catches_late_older_events() {
     let env = SyncEnv::new();
     let peer = NodeProcess::start(

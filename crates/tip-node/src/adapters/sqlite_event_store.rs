@@ -15,7 +15,7 @@ pub struct SequencedEvent {
     pub event: SignedEvent,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct KnownPeer {
     pub url: String,
     pub claimed_node_public_key: Option<String>,

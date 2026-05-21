@@ -4,6 +4,8 @@ use tip_core::{
     SignedEvent,
 };
 
+use crate::adapters::sqlite_event_store::KnownPeer;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct PeerNodeInfo {
     pub node_public_key: String,
@@ -31,6 +33,18 @@ impl HttpPeerEventClient {
     pub fn node_info(&self) -> Result<PeerNodeInfo, PeerError> {
         self.client
             .get(format!("{}/info", self.base_url))
+            .send()
+            .map_err(to_peer_error)?
+            .error_for_status()
+            .map_err(to_peer_error)?
+            .json()
+            .map_err(to_peer_error)
+    }
+
+    pub fn known_peers(&self, limit: usize) -> Result<Vec<KnownPeer>, PeerError> {
+        self.client
+            .get(format!("{}/peers", self.base_url))
+            .query(&[("limit", limit.to_string())])
             .send()
             .map_err(to_peer_error)?
             .error_for_status()

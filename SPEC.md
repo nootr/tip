@@ -379,15 +379,18 @@ Response:
 
 ## Peer discovery direction
 
-TIP 0.1 does not automatically discover or trust peers. The intended discovery model is candidate gossip:
+TIP 0.1 does not automatically trust or sync discovered peers. The discovery model is candidate gossip:
 
-- nodes may exchange known peer candidates
+- nodes may exchange known peer candidates through `GET /peers`
+- configured sync peers may advertise further candidates
 - discovered peers are untrusted by default
 - discovered peers MUST NOT be synced automatically
 - local configuration remains the only authority for automatic sync peers
 - no transitive trust is implied when a configured peer advertises another peer
 
-The reference node stores locally known peers for inspection. The current implementation records configured or ad-hoc peers observed during sync attempts and exposes them through a bounded read-only `GET /peers` endpoint. `GET /peers` may be filtered by `status` and defaults to `limit=100`, with a maximum `limit=500`.
+The reference node stores locally known peers for inspection. It records configured or ad-hoc peers observed during sync attempts and exposes them through a bounded read-only `GET /peers` endpoint. `GET /peers` may be filtered by `status` and defaults to `limit=100`, with a maximum `limit=500`.
+
+During sync from locally configured peers, the reference node fetches `GET /peers?limit=500` and stores valid advertised peer URLs as local `candidate` records with `source_peer_url` set to the configured peer. Invalid URLs, the source peer itself, and already-known peers are ignored. CLI `--peer` ad-hoc sync does not ingest gossiped candidates.
 
 This endpoint exposes candidate metadata such as URL, claimed node public key, optional name, source, status, failure count, and first/last seen timestamps. Peer key pinning is still required before promoting a candidate to a configured sync peer.
 

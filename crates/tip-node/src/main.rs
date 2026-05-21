@@ -1,8 +1,9 @@
 use anyhow::{bail, Context};
 use clap::{Parser, Subcommand};
+use reqwest::Url;
 use serde_json::json;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     net::SocketAddr,
     sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -228,6 +229,7 @@ struct SyncPeer {
     url: String,
     expected_node_public_key: Option<String>,
     name: Option<String>,
+    ingest_peer_candidates: bool,
 }
 
 impl SyncPeer {
@@ -236,6 +238,7 @@ impl SyncPeer {
             url: url.into(),
             expected_node_public_key: None,
             name: None,
+            ingest_peer_candidates: false,
         }
     }
 
@@ -244,6 +247,7 @@ impl SyncPeer {
             url: config.url,
             expected_node_public_key: config.expected_node_public_key,
             name: config.name,
+            ingest_peer_candidates: true,
         }
     }
 }
@@ -404,6 +408,11 @@ fn sync_peers(
             },
         )
         .with_context(|| format!("sync from peer {}", sync_peer.url))?;
+        let discovered_peers = if sync_peer.ingest_peer_candidates {
+            ingest_peer_candidates(sync_peer, &peer, store)?
+        } else {
+            0
+        };
         total_pulled += summary.pulled;
         total_accepted += summary.accepted;
         total_rejected += summary.rejected;
@@ -416,6 +425,7 @@ fn sync_peers(
             "pulled": summary.pulled,
             "accepted": summary.accepted,
             "rejected": summary.rejected,
+            "discovered_peers": discovered_peers,
         }));
     }
 
@@ -492,6 +502,71 @@ fn verify_peer_identity(
     )?;
 
     Ok(info.node_public_key)
+}
+
+fn ingest_peer_candidates(
+    sync_peer: &SyncPeer,
+    peer: &HttpPeerEventClient,
+    store: &SqliteEventStore,
+) -> anyhow::Result<usize> {
+    let candidates = match peer.known_peers(500) {
+        Ok(candidates) => candidates,
+        Err(err) => {
+            eprintln!(
+                "TIP peer candidate gossip skipped for {}: {err}",
+                sync_peer.url
+            );
+            return Ok(0);
+        }
+    };
+
+    let mut known_urls = store
+        .list_known_peers()
+        .map_err(|err| anyhow::anyhow!(err.to_string()))?
+        .into_iter()
+        .filter_map(|peer| normalize_candidate_url(&peer.url))
+        .collect::<HashSet<_>>();
+    let source_url = normalize_candidate_url(&sync_peer.url)
+        .ok_or_else(|| anyhow::anyhow!("configured peer URL became invalid"))?;
+    let now = SystemClock.now_unix_seconds();
+    let mut ingested = 0usize;
+
+    for candidate in candidates {
+        let Some(url) = normalize_candidate_url(&candidate.url) else {
+            continue;
+        };
+        if url == source_url || known_urls.contains(&url) {
+            continue;
+        }
+
+        record_known_peer(
+            store,
+            KnownPeerUpdate {
+                url: url.clone(),
+                claimed_node_public_key: candidate.claimed_node_public_key,
+                name: candidate.name,
+                source_peer_url: Some(source_url.clone()),
+                seen_at: now,
+                verified_at: None,
+                status: "candidate".to_string(),
+                failed: false,
+            },
+        )?;
+        known_urls.insert(url);
+        ingested += 1;
+    }
+
+    Ok(ingested)
+}
+
+fn normalize_candidate_url(url: &str) -> Option<String> {
+    let mut parsed = Url::parse(url.trim()).ok()?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return None;
+    }
+    parsed.set_fragment(None);
+    parsed.set_query(None);
+    Some(parsed.as_str().trim_end_matches('/').to_string())
 }
 
 fn record_known_peer(store: &SqliteEventStore, update: KnownPeerUpdate) -> anyhow::Result<()> {
