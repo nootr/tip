@@ -1,8 +1,8 @@
 # TIP — Trust Infrastructure Protocol
 
-Portable trust evidence for communities, maintainers, platforms, and agents.
+Trust evidence, portable.
 
-TIP lets people and software publish verifiable public evidence as signed events: identities, claims, attestations, and revocations. It is useful when trust needs to travel across systems without turning one database, platform, or node into the authority.
+TIP helps communities, maintainers, platforms, and agents publish verifiable public evidence as signed events: identities, claims, attestations, and revocations. It is useful when trust needs to travel across systems without turning one database, platform, or node into the authority.
 
 TIP is not a universal reputation score and does not require a blockchain. TIP nodes are untrusted caches; clients verify signatures and apply explicit local policy. Absence from one node is not proof that an event or revocation does not exist.
 
